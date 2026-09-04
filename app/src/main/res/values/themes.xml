@@ -1,6 +1,6 @@
 <resources>
     <!-- Platform theme only; all real theming is Compose Material 3 (ui/theme). -->
-    <style name="Theme.GuitarTuner" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.OpenGuitarTuner" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">#0E1117</item>
     </style>
 </resources>

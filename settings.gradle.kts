@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "GuitarTuner"
+rootProject.name = "OpenGuitarTuner"
 include(":app")
 include(":dsp")

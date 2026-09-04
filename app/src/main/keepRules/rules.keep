@@ -1,12 +1,45 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
+# R8 keep rules for the release build (`optimization { enable = true }` in app/build.gradle.kts).
+# AGP combines every file in src/main/keepRules and passes them to R8.
 #
 # For more details, see
 #   https://d.android.com/r/tools/r8/keep-rules
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# ---------------------------------------------------------------------------------------------------------------
+# kotlinx.serialization
+# ---------------------------------------------------------------------------------------------------------------
+# The library already ships consumer rules (META-INF/com.android.tools/r8/kotlinx-serialization-*.pro) that keep
+# `Companion`, `serializer()` and the `$$serializer` descriptors, so plain @Serializable classes need nothing here.
+#
+# What those rules do NOT cover is enum *constant names*, and those are load-bearing here. `TunerSettings` and
+# `Tuning` are persisted as JSON by the typed DataStores in `data/DataStores.kt`, and every enum property is written
+# by name — "PREFER_USB", "DARK", "SHARPS", "THREE_PLUS_THREE", "MINE". kotlinx.serialization derives those strings
+# from `Enum.name`. If R8 ever renames the constants or unboxes the enums, a settings.json / tunings.json written by
+# an earlier build stops parsing, and the ReplaceFileCorruptionHandler silently resets the user's settings and
+# deletes every custom tuning — a data-loss bug that no test would catch, because the tests never run through R8.
+#
+# Measured on AGP 9.4 / R8 with these rules removed: the constant names survive anyway, because the serializers
+# reference values() and R8 therefore declines to rename or unbox them. So these rules are currently a no-op. They
+# stay because the cost is a few bytes and the failure mode is silent, irreversible user data loss the first time a
+# future R8 gets cleverer about enums. Do not delete them on the grounds that the APK looks fine without them.
+
+-keepclassmembers enum dev.ntainy.guitar_tuner.data.model.** {
+    <fields>;
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# `Notation` lives in the pure-JVM :dsp module and is not annotated @Serializable; kotlinx.serialization builds an
+# implicit enum serializer for it at the TunerSettings use site, which still reads the constant names.
+-keepclassmembers enum dev.ntainy.guitar_tuner.dsp.Notation {
+    <fields>;
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+# Crash reports
+# ---------------------------------------------------------------------------------------------------------------
+# The app ships no crash reporter, so the only stack traces anyone sees are the ones in `adb logcat` or a bug report.
+# Keeping line numbers makes them readable; the mapping file stays in app/build/outputs/mapping/release/.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

@@ -18,5 +18,10 @@ local.properties
 # Kotlin 2.x session files
 .kotlin/
 
+# Release signing material — never commit a keystore or its passwords
+*.jks
+*.keystore
+keystore.properties
+
 # Claude Code agent worktrees
 .claude/worktrees/

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Superseded runs of the same branch/PR are pointless; cancel them.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Tests and debug APK
+    runs-on: ubuntu-latest
+    # No secrets are read anywhere in this workflow, so it is safe to run on fork pull requests.
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # ubuntu-latest ships platform android-37.0 and build-tools 37.0.0, so nothing needs installing. Accepting the
+      # licences up front only lets AGP auto-download a component the image happens to lack; it never fails the job.
+      - name: Accept Android SDK licences
+        run: yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+
+      # The instrumented suite needs an emulator and is deliberately not run here.
+      - name: Test and assemble
+        run: ./gradlew :dsp:test :app:testDebugUnitTest assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: openguitartuner-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            dsp/build/reports/tests/
+            app/build/reports/tests/
+          if-no-files-found: ignore
