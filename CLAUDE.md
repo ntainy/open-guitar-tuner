@@ -63,6 +63,16 @@ directly. Motion comes from `MaterialTheme.motionScheme` under `MaterialExpressi
 `MaterialTheme.motionScheme.*Spec()` rather than a hand-written `spring()`. material3 is pinned to a 1.5.0 alpha
 ahead of the Compose BOM for that API — see `libs.versions.toml`.
 
+Tune screen (M8): header = tuning chip (name + pitch letters, opens Tunings) · AUTO chip · input icon; then
+`ui/tuner/Readout.kt` (signed cents in Bricolage 56 sp, hint, "A2 · 111.52 Hz") over the `CentsGauge` ruler; the
+headstock takes every remaining dp. `readingColor` is the one colour rule for a reading: dim with no pitch, `inTune`
+inside the band, `onSurface` up to ±25, `farOff` beyond — brass (`target`) means the target string or a selection,
+never "off". The trail behind the needle is the last `TRACE_WINDOW_MS` (1.5 s) of readings, gated by the
+`showTrace` setting ("Needle trail"). `HeadstockSpec.visible` crops the art at the nut; string buttons are centred
+on `pegAnchors` (60 dp, shrinking to 40 dp via `stringButtonSize` when posts are closer), so there are no side
+columns and no post rings. Chromatic mode swaps the headstock for the 144 dp `NoteGlyph` + `NoteStrip`. The editor
+reuses `Headstock` as its preview (340 dp) and opens the note picker from a post.
+
 Audio chain: `AudioSource.samples()` (48 kHz mono float chunks) → `FrameAssembler` (4096 window, 2048 hop) →
 `PitchDetector.detect` (YIN) → `NoiseGate` → `OctaveGuard` → `PitchSmoother.push` → `TargetResolver.resolveMatch`
 (overtone folds) → `TunerState`. When the active tuning `isChromatic` the chain stops after the octave guard: no
@@ -81,5 +91,6 @@ every stage and what was measured on the phone; change parameters there and in `
 
 ## Design
 
-Dark-first Material 3. Palette and component rules are in `docs/PLAN.md` ("Visual identity"). Headstock art is
+Dark-first Material 3. Palette is in `docs/PLAN.md` ("Visual identity"); the PLAN's gauge/bubble/glyph description
+is pre-M8 — `docs/ROADMAP.md` ("M8 · Design pass") has the current Tune screen rules. Headstock art is
 `res/drawable-nodpi/headstock_3_3.png` (411×770) and `headstock_6_in_line.png` (607×882); originals in `art/`.

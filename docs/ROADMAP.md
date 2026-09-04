@@ -20,7 +20,7 @@ Sizes: S = a session or less · M = a few sessions · L = multi-wave, needs art 
   1.4.0 the BOM pins. `TunerShapes` moves the shape scale up a notch and string buttons morph circle → squared while
   targeted. A two-position AUTO/MANUAL segmented control was tried and reverted — the string bubbles already pin and
   unpin, so a pill that wide bought nothing and pushed the app name out of the header.
-- **Scrolling pitch trace** ✅ — `ui/tuner/PitchTrace.kt`, last 6 s under the gauge, **on by default**: it shipped
+- **Scrolling pitch trace** ✅ (replaced in M8 by the needle trail, below) — `ui/tuner/PitchTrace.kt`, last 6 s under the gauge, **on by default**: it shipped
   switched off and was simply never found. Drawn on its own panel ground, with rules at ±25 cents and the readings
   inset from the edges so a value clamped at ±50 is still a whole line. Sampled on a
   40 ms timer rather than from `engine.state`: a StateFlow stops emitting when the pitch stops changing, and a trace
@@ -30,6 +30,38 @@ Sizes: S = a session or less · M = a few sessions · L = multi-wave, needs art 
   through `AudioTrack`. Capture stops for the note and resumes only after the last overlapping one, and only if the
   screen is still up, so a note finishing after the user leaves cannot quietly reopen the microphone.
 - **Landscape / tablet layout** ✅ — `TunerBody` splits side by side once the screen is wider than it is tall.
+
+## M8 · Design pass — done ✅
+Driven by the 4 Sep 2026 design review ("Headstock first"). The Tune screen had given the headstock 163 of 772 dp
+and drawn the cents offset four times (bubble, needle, glyph ring, trace); the string buttons missed the pegs
+because the block was height-starved and `spreadCentres` packed them evenly.
+
+- **Tune screen re-hierarchy** — header is a tuning chip (name + notes, opens Tunings), an AUTO chip and the
+  input icon; no app name, breadcrumb or caption. `ui/tuner/Readout.kt` shows the signed cents in Bricolage 56 sp
+  with the hint and "A2 · 111.52 Hz" beside it ("Play a string" when idle) over the ruler. The note glyph is gone
+  in string mode (the target button already says the note) and stays the hero in chromatic mode, 144 dp, with the
+  note strip under it. The headstock takes every remaining dp.
+- **Headstock** — `HeadstockSpec.visible` crops the art at the nut (and trims the 6-in-line PNG's transparent
+  margins) with an eased 40 dp fade; the string buttons (60 dp, 22 sp Bricolage, shrinking to 40 dp when posts
+  are closer) sit **on the posts**, so `ButtonSide` / `spreadCentres` and the post rings are gone. "Start over"
+  is a text button in the block's corner, only while a mark exists.
+- **Needle trail instead of the trace panel** — the last 1.5 s of readings fade behind the needle on the same
+  ruler (`TRACE_WINDOW_MS`, 40 ms samples, every third drawn). `PitchTrace.kt` deleted; the setting is still
+  `showTrace`, labelled "Needle trail".
+- **Colour roles** — `readingColor`: dim with no pitch, mint inside the band, ink up to ±25, coral beyond. Brass
+  never means "off"; mint never means "selected" (Tunings check and the input sheet's "Active" are brass now).
+- **Tunings** — Chromatic is a row of its own above the sections (a mode, not a tuning); the headstock-layout
+  selector lives only in Settings; custom rows say their distance from Standard ("6th −2 · 3rd −1") instead of
+  repeating the chips; preset rows have an overflow with "Copy to My tunings".
+- **Editor** — a headstock preview (the same composable, 340 dp so the 6-in-line posts still fit 40 dp buttons)
+  whose posts open the note picker; new tunings start unnamed with Save disabled; "Start from a preset…" sheet;
+  the note picker is pitch-class chips + an octave row instead of sixty scrolling rows.
+- **Settings** — plain reference-pitch track (no 51 tick dots), USB tips collapsed behind a row.
+- **Bugs fixed** — the chromatic strip clipped its B cell on 360 dp (cells now size from the width); landscape
+  hid the note glyph and Start over under the nav bar (the readout column now fits and scrolls as a safety).
+
+Not done, by design: dropping the bottom bar for another 95 dp. Decide after living with M8; the tuning chip
+already opens Tunings, so the bar's only unique job is Settings.
 
 ## Chromatic — done ✅
 A "Chromatic" entry leading the tunings list, carried in `PresetTunings.all` so selecting, persisting and resolving
@@ -74,14 +106,18 @@ are tuning.
 
 ## Suggested order
 1. ~~M6 · Feel and ship~~ ✅ haptics, expressive motion, landscape, release build + CI/CD, USB tips.
-2. M7 · ~~reference tone~~ ✅, ~~trace~~ ✅ — **chromatic mode is the remaining piece.**
-3. M8 · Instruments (subagent wave): model + migration, presets, editor/list, art + anchors, bass detector pass, then 12-string.
-4. M9 · Data: import/export, capo, favourites.
+2. ~~M7 · reference tone, trace, chromatic~~ ✅
+3. ~~M8 · Design pass~~ ✅ (Tune screen re-hierarchy, editor, list, settings).
+4. M9 · Instruments (subagent wave): model + migration, presets, editor/list, art + anchors, bass detector pass, then 12-string.
+5. M10 · Data: import/export, capo, favourites.
 
 ## Open questions raised by the work so far
 - **material3 is on an alpha.** 1.5.0-alpha27 is pinned ahead of the Compose BOM for the expressive API. Alphas
   churn; re-check the theme call and the Slider rendering on each bump, and drop the override once 1.5.0 is stable
   and the BOM catches up.
+- **Headstock art resolution.** Since M8 the art is drawn larger than the PNG (about 1.6× for 3+3, 2.4× for
+  6-in-line, bicubic-filtered); the originals are 411×770 and 607×882 AVIFs, so sharper assets or the vectors
+  below would be the fix if the softness ever bothers.
 - **Headstock art.** The app ships the original supplied illustrations again. A set of original vector headstocks
   was drawn (3+3 and 6-in-line, graphite & brass, with their own peg anchors) and is parked in
   `art/vector-headstocks/` with the generator that produced it — it is licence-clean and ready if the raster art
@@ -97,5 +133,5 @@ Bluetooth mics (latency/codec), widget or Wear OS, Play Store listing, smarter s
 nature; pinning is the escape hatch), cloud sync.
 
 ## Open decisions
-Instrument priority (default 7-string + bass first) · art source (default vectors now) · chromatic entry point
-(default tunings list) · start with M6 (default yes).
+Instrument priority (default 7-string + bass first) · art source (default vectors now) · whether to drop the
+bottom bar after living with M8.

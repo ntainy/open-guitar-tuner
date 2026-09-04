@@ -61,8 +61,10 @@ import dev.ntainy.guitar_tuner.dsp.Notation
 import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
 import dev.ntainy.guitar_tuner.ui.theme.GuitarTunerTheme
 import dev.ntainy.guitar_tuner.ui.theme.farOff
-import dev.ntainy.guitar_tuner.ui.tunings.NoteChipRow
 import dev.ntainy.guitar_tuner.ui.tunings.PreviewData
+import dev.ntainy.guitar_tuner.ui.tuner.Headstock
+import dev.ntainy.guitar_tuner.ui.tuner.StringUi
+import dev.ntainy.guitar_tuner.dsp.NoteMath
 import dev.ntainy.guitar_tuner.ui.tunings.previewContainer
 
 /** Creates or edits a custom tuning; [onDone] is called on Save, Close and the system back gesture. */
@@ -172,14 +174,25 @@ fun TuningEditorContent(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = "Preview",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Spacer(Modifier.height(12.dp))
+            // The tuning as the Tune screen will show it. Tapping a post opens that string's note picker; the
+            // rows below stay for the one-semitone nudges.
+            Headstock(
+                layout = state.headstockLayout,
+                strings = state.notes.mapIndexed { index, midi ->
+                    StringUi(
+                        index = index,
+                        label = state.noteLabels[index],
+                        isTarget = false,
+                        isTuned = false,
+                        frequencyHz = NoteMath.frequency(midi, PREVIEW_A4_HZ),
+                    )
+                },
+                onStringTap = { pickerIndex = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(EDITOR_HEADSTOCK_HEIGHT),
             )
-            Spacer(Modifier.height(6.dp))
-            NoteChipRow(labels = state.noteLabels)
             Spacer(Modifier.height(12.dp))
 
             OutlinedButton(
@@ -294,6 +307,15 @@ private fun StringRow(
         }
     }
 }
+
+/**
+ * Tall enough that the 6-in-line posts, the closest together of the two layouts, still take a 40 dp button
+ * without overlapping; the 3+3 gets full-size buttons at the same height.
+ */
+private val EDITOR_HEADSTOCK_HEIGHT = 340.dp
+
+/** The preview never plays anything, so the reference pitch it labels strings with does not matter. */
+private const val PREVIEW_A4_HZ = 440.0
 
 // ---- Previews -------------------------------------------------------------------------------------------------
 

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.ntainy.guitar_tuner.data.SettingsRepository
 import dev.ntainy.guitar_tuner.data.TuningsRepository
+import dev.ntainy.guitar_tuner.data.model.HeadstockLayout
 import dev.ntainy.guitar_tuner.data.model.MAX_STRING_MIDI
 import dev.ntainy.guitar_tuner.data.model.MIN_STRING_MIDI
 import dev.ntainy.guitar_tuner.data.model.PresetIds
@@ -47,6 +48,8 @@ data class TuningEditorUiState(
     val nameTouched: Boolean = false,
     val notes: List<Int> = InMemoryTuningsRepository.STANDARD.strings,
     val notation: Notation = Notation.SHARPS,
+    /** Which headstock the preview draws: the same one the Tune screen shows. */
+    val headstockLayout: HeadstockLayout = HeadstockLayout.THREE_PLUS_THREE,
     val errors: List<String> = emptyList(),
     val templates: List<TuningSectionUi> = emptyList(),
     val isNew: Boolean = true,
@@ -100,6 +103,7 @@ class TuningEditorViewModel(
                 nameTouched = d.nameTouched,
                 notes = d.notes,
                 notation = prefs.notation,
+                headstockLayout = prefs.headstockLayout,
                 errors = d.toTuning(prefs.notation).validationErrors(),
                 templates = buildTemplates(all, prefs.notation),
                 isNew = d.isNew,

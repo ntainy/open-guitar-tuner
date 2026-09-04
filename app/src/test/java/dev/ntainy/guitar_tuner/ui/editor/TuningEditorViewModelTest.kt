@@ -5,6 +5,7 @@ import app.cash.turbine.test
 import dev.ntainy.guitar_tuner.data.model.MAX_STRING_MIDI
 import dev.ntainy.guitar_tuner.data.model.MIN_STRING_MIDI
 import dev.ntainy.guitar_tuner.data.model.PresetIds
+import dev.ntainy.guitar_tuner.data.model.HeadstockLayout
 import dev.ntainy.guitar_tuner.data.model.TunerSettings
 import dev.ntainy.guitar_tuner.data.model.Tuning
 import dev.ntainy.guitar_tuner.data.model.TuningGroup
@@ -105,6 +106,15 @@ class TuningEditorViewModelTest {
             val cleared = awaitItem()
             assertEquals(listOf("Name is empty"), cleared.visibleErrors)
             assertFalse(cleared.canSave)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun headstockLayoutFollowsSettings() = runTest {
+        val (vm, _) = viewModel(tuningId = null, settings = TunerSettings(headstockLayout = HeadstockLayout.SIX_IN_LINE))
+        vm.uiState.test {
+            assertEquals(HeadstockLayout.SIX_IN_LINE, awaitLoaded().headstockLayout)
             cancelAndIgnoreRemainingEvents()
         }
     }

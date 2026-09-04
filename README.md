@@ -10,7 +10,7 @@ Material 3, and a small hand-written YIN pitch detector.
 
 ## Status
 
-Working and in use, unit-tested (232 tests across `:dsp` and `:app`) and verified on a Galaxy S23 Ultra with an
+Working and in use, unit-tested (261 tests across `:dsp` and `:app`) and verified on a Galaxy S23 Ultra with an
 acoustic guitar through the phone microphone. The USB input path is implemented and unit-tested but has not yet
 been tried with a real interface. See `docs/ROADMAP.md` for what comes next, `docs/PLAN.md` for how the MVP was built, `docs/ARCHITECTURE.md` for how the
 pieces fit, `docs/DSP.md` for the pitch detector, `docs/TUNINGS.md` for the preset list, and `CLAUDE.md` for build
@@ -18,14 +18,17 @@ commands and conventions.
 
 ## Features
 
-- Six-string preview on original headstock art, 3+3 or 6-in-line, with the active tuning post ringed in brass.
-- Cents gauge (±50) with a springing needle, "Tune up / Tune down / In tune" hint, and tuned-string marks.
+- Six-string preview on original headstock art, 3+3 or 6-in-line, cropped at the nut and given most of the
+  screen; the string buttons sit on the tuning posts, the target one squared off in brass.
+- A cents readout (the signed number, "Tune up / Tune down / In tune", target note and Hz) over a ±50 ruler with
+  a springing needle; mint inside the tolerance band, coral past ±25; tuned-string marks.
 - AUTO string detection with hysteresis, or tap a string to pin it (tap it again to hand back to AUTO); a toast when all six are in tune.
 - Haptics throughout: ticks as sliders step, a nudge when a string earns its mark, a firmer one when all six land.
   Driven by the vibrator directly, so the app's own switch decides rather than Android's system touch-feedback setting.
 - Long-press a string to hear its target pitch as a synthesized pluck; capture pauses while it sounds.
-- Optional scrolling pitch trace: the last six seconds under the gauge, so you can watch a note settle.
-- Unlimited custom tunings with a full editor; 23 presets grouped as Standard, Power, Transposed, Open, Extras.
+- Optional needle trail: the last 1.5 s of readings fade behind the needle, so you can watch a note settle.
+- Unlimited custom tunings with a full editor: a headstock preview whose posts open a two-step note picker,
+  −/+ steppers, "Start from a preset"; 23 presets grouped as Standard, Power, Transposed, Open, Extras.
 - Input from the built-in microphone or a USB audio interface, chosen automatically or by hand.
 - Reference pitch 415–466 Hz, tolerance 1–10 cents, sharps or flats, dark/light theme, keep-screen-on.
 - Side-by-side layout in landscape and on tablets; debug builds add a synthetic "Test tone" input.
