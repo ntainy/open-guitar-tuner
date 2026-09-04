@@ -108,7 +108,7 @@ val HeadstockLayout.spec: HeadstockSpec
 
 private const val IMAGE_ID = "headstock"
 private val COLUMN_GAP = 12.dp
-private val BUTTON_MIN_GAP = 6.dp
+private val BUTTON_MIN_GAP = 8.dp
 
 /**
  * Headstock art with the post rings plus the six string buttons in columns beside it, each button on the row of its
@@ -150,7 +150,8 @@ fun Headstock(
     ) { measurables, constraints ->
         val gapPx = COLUMN_GAP.roundToPx()
         val minGapPx = BUTTON_MIN_GAP.roundToPx()
-        // Six buttons in one column need 6 × 56 dp; on a short screen shrink them (down to 36 dp) so they fit.
+        // Six buttons in one column need 6 × 56 dp; on a short screen shrink them (down to 30 dp) so they fit
+        // with the gap intact: the gap wins over the size.
         val perSide = ButtonSide.entries.maxOf { side -> strings.count { spec.buttonSides.getOrNull(it.index) == side } }
             .coerceAtLeast(1)
         val fullPx = STRING_BUTTON_SIZE.roundToPx()

@@ -233,13 +233,13 @@ fun TunerContent(
                     layout = state.headstockLayout,
                     strings = state.strings,
                     onStringTap = onSelectString,
-                    modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp),
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 4.dp),
                     manualMode = !state.autoMode,
                 )
                 FilledTonalButton(
                     onClick = onStartOver,
                     enabled = state.anyTuned,
-                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 12.dp),
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp),
                 ) {
                     Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))

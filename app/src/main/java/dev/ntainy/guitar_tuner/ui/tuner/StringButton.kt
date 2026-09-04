@@ -35,7 +35,7 @@ import dev.ntainy.guitar_tuner.ui.theme.target
 val STRING_BUTTON_SIZE = 56.dp
 
 /** Smallest the headstock may shrink a button to when six of them must share a short column. */
-val MIN_STRING_BUTTON_SIZE = 36.dp
+val MIN_STRING_BUTTON_SIZE = 30.dp
 
 enum class StringButtonState {
     IDLE,
@@ -94,7 +94,7 @@ fun StringButton(
                 .matchParentSize()
                 .clip(CircleShape)
                 .background(scheme.surfaceContainer)
-                .border(2.dp, ringColor, CircleShape)
+                .border(if (compact) 1.5.dp else 2.dp, ringColor, CircleShape)
                 .semantics { if (contentDescription != null) this.contentDescription = contentDescription }
                 .clickable(onClick = onClick, role = Role.Button),
             contentAlignment = Alignment.Center,
