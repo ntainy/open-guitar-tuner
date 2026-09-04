@@ -1,76 +1,79 @@
 package dev.ntainy.guitar_tuner.ui.tuner
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import dev.ntainy.guitar_tuner.ui.theme.farOff
 import dev.ntainy.guitar_tuner.ui.theme.inTune
-import dev.ntainy.guitar_tuner.ui.theme.target
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /** Half-width of the ruler in cents. */
 const val GAUGE_RANGE_CENTS = 50.0
 
-/** Beyond this the needle turns coral. */
+/** Beyond this the reading turns coral. */
 const val FAR_OFF_CENTS = 25.0
 
-private const val BUBBLE_ID = "bubble"
-private const val RULER_ID = "ruler"
-private val RULER_HEIGHT = 72.dp
+/**
+ * How much history the needle trail keeps. Long enough to see a pluck settle or a bend move, short enough that the
+ * ghost needles never read as a second reading.
+ */
+const val TRACE_WINDOW_MS = 1_500L
+
+/** Height of the ruler, labels included. */
+val RULER_HEIGHT = 72.dp
+
 private val RULER_INSET: Dp = 28.dp
-private val BUBBLE_GAP = 6.dp
+
+/** The trail is sampled every 40 ms; every third sample is plenty for a tail this short. */
+private const val TRAIL_STRIDE = 3
+private const val TRAIL_ALPHA_NEWEST = 0.38f
+private const val TRAIL_ALPHA_OLDEST = 0.08f
 
 /**
- * The colour of the needle, note ring and offset bubble for a reading: dimmed with no pitch, mint inside tolerance,
- * brass up to ±[FAR_OFF_CENTS], coral beyond.
+ * One reading of the trail. [cents] is null for a frame with no stable pitch, which leaves a gap rather than a
+ * ghost needle standing in silence.
  */
-fun needleColor(centsOff: Double?, inTune: Boolean, scheme: ColorScheme): Color = when {
+@Immutable
+data class TracePoint(val atMs: Long, val cents: Float?)
+
+/**
+ * The colour of a reading — the cents figure, its hint and the needle: dimmed with no pitch, mint inside tolerance,
+ * ink up to ±[FAR_OFF_CENTS], coral beyond. Brass is reserved for the target and never means "off".
+ */
+fun readingColor(centsOff: Double?, inTune: Boolean, scheme: ColorScheme): Color = when {
     centsOff == null -> scheme.onSurfaceVariant.copy(alpha = 0.55f)
     inTune -> scheme.inTune
-    abs(centsOff) <= FAR_OFF_CENTS -> scheme.target
+    abs(centsOff) <= FAR_OFF_CENTS -> scheme.onSurface
     else -> scheme.farOff
 }
 
 /**
- * Horizontal ruler from −50 to +50 cents with a spring-loaded needle and an offset bubble riding above it.
- * With no pitch the needle rests at 0, dimmed, and the bubble reads "Play a string".
+ * Horizontal ruler from −50 to +50 cents with a spring-loaded needle. With no pitch the needle rests at 0, dimmed.
+ * [trail] is the last [TRACE_WINDOW_MS] of readings, drawn as fading ghost needles behind the live one; pass an
+ * empty list to draw none.
  */
 @Composable
 fun CentsGauge(
@@ -80,84 +83,42 @@ fun CentsGauge(
     hint: String,
     modifier: Modifier = Modifier,
     centsLabel: String? = centsOff?.let(::formatCents),
+    trail: List<TracePoint> = emptyList(),
 ) {
     val scheme = MaterialTheme.colorScheme
     val clamped = (centsOff ?: 0.0).coerceIn(-GAUGE_RANGE_CENTS, GAUGE_RANGE_CENTS).toFloat()
     val needle by animateFloatAsState(
         targetValue = clamped,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
         label = "needle",
     )
-    val needleColor by animateColorAsState(needleColor(centsOff, inTune, scheme), label = "needleColor")
+    val needleColor by animateColorAsState(
+        targetValue = readingColor(centsOff, inTune, scheme),
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "needleColor",
+    )
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = scheme.onSurfaceVariant)
     val glyphStyle = MaterialTheme.typography.titleMedium.copy(color = scheme.onSurfaceVariant)
     val description = if (centsLabel == null) hint else "$centsLabel cents, $hint"
 
-    Layout(
-        modifier = modifier.semantics { contentDescription = description },
-        content = {
-            OffsetBubble(
-                centsLabel = centsLabel,
-                hint = hint,
-                accent = needleColor,
-                modifier = Modifier.layoutId(BUBBLE_ID),
-            )
-            Canvas(modifier = Modifier.layoutId(RULER_ID).fillMaxWidth().height(RULER_HEIGHT)) {
-                drawRuler(
-                    needleCents = needle,
-                    needleColor = needleColor,
-                    inTune = inTune,
-                    hasPitch = centsOff != null,
-                    toleranceCents = toleranceCents.toFloat(),
-                    scheme = scheme,
-                    textMeasurer = textMeasurer,
-                    labelStyle = labelStyle,
-                    glyphStyle = glyphStyle,
-                )
-            }
-        },
-    ) { measurables, constraints ->
-        val width = constraints.maxWidth
-        val ruler = measurables.first { it.layoutId == RULER_ID }
-            .measure(Constraints(minWidth = width, maxWidth = width, maxHeight = constraints.maxHeight))
-        val bubble = measurables.first { it.layoutId == BUBBLE_ID }
-            .measure(constraints.copy(minWidth = 0, minHeight = 0))
-        val gap = BUBBLE_GAP.roundToPx()
-        val height = bubble.height + gap + ruler.height
-        layout(width, height) {
-            ruler.placeRelative(0, bubble.height + gap)
-            val inset = RULER_INSET.toPx()
-            val range = GAUGE_RANGE_CENTS.toFloat()
-            val needleX = inset + (needle + range) / (2f * range) * (width - 2 * inset)
-            val x = (needleX - bubble.width / 2f).roundToInt().coerceIn(0, (width - bubble.width).coerceAtLeast(0))
-            bubble.placeRelative(x, 0)
-        }
-    }
-}
-
-/** Rounded pill above the needle: "+3 · Tune down", or just the hint when there is no reading. */
-@Composable
-private fun OffsetBubble(centsLabel: String?, hint: String, accent: Color, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(50)
-    Row(
+    Canvas(
         modifier = modifier
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .border(1.5.dp, accent, shape)
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-            // Same height with or without the cents figure, so the gauge below never shifts.
-            .defaultMinSize(minHeight = 24.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .fillMaxWidth()
+            .height(RULER_HEIGHT)
+            .semantics { contentDescription = description },
     ) {
-        if (centsLabel != null) {
-            Text(text = centsLabel, style = MaterialTheme.typography.titleMedium, color = accent)
-        }
-        Text(
-            text = hint,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        drawRuler(
+            needleCents = needle,
+            needleColor = needleColor,
+            inTune = inTune,
+            hasPitch = centsOff != null,
+            toleranceCents = toleranceCents.toFloat(),
+            trail = trail,
+            scheme = scheme,
+            textMeasurer = textMeasurer,
+            labelStyle = labelStyle,
+            glyphStyle = glyphStyle,
         )
     }
 }
@@ -168,6 +129,7 @@ private fun DrawScope.drawRuler(
     inTune: Boolean,
     hasPitch: Boolean,
     toleranceCents: Float,
+    trail: List<TracePoint>,
     scheme: ColorScheme,
     textMeasurer: TextMeasurer,
     labelStyle: TextStyle,
@@ -220,10 +182,30 @@ private fun DrawScope.drawRuler(
         topLeft = Offset(size.width - x0 / 2f - sharp.size.width / 2f, glyphCentreY - sharp.size.height / 2f),
     )
 
-    // Needle: a soft glow when in tune, then the rounded 3 dp needle itself.
-    val nx = xAt(needleCents)
     val needleTop = 0f
     val needleBottom = baseline + 4.dp.toPx()
+    val needleWidth = 3.dp.toPx()
+
+    // The trail: where the needle has been over the last window, fading with age, newest on top.
+    if (trail.isNotEmpty()) {
+        val nowMs = trail.last().atMs
+        for (i in trail.indices.reversed() step TRAIL_STRIDE) {
+            val point = trail[i]
+            val cents = point.cents ?: continue
+            val age = ((nowMs - point.atMs).toFloat() / TRACE_WINDOW_MS).coerceIn(0f, 1f)
+            val x = xAt(cents.coerceIn(-range, range))
+            drawLine(
+                color = needleColor.copy(alpha = lerp(TRAIL_ALPHA_NEWEST, TRAIL_ALPHA_OLDEST, age)),
+                start = Offset(x, needleTop),
+                end = Offset(x, needleBottom),
+                strokeWidth = needleWidth,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
+
+    // Needle: a soft glow when in tune, then the rounded 3 dp needle itself.
+    val nx = xAt(needleCents)
     if (inTune && hasPitch) {
         drawLine(
             color = needleColor.copy(alpha = 0.28f),
@@ -237,7 +219,7 @@ private fun DrawScope.drawRuler(
         color = needleColor,
         start = Offset(nx, needleTop),
         end = Offset(nx, needleBottom),
-        strokeWidth = 3.dp.toPx(),
+        strokeWidth = needleWidth,
         cap = StrokeCap.Round,
     )
 }

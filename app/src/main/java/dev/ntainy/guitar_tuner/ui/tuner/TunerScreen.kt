@@ -8,14 +8,19 @@ import android.provider.Settings
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -25,30 +30,30 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.MicOff
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import dev.ntainy.guitar_tuner.ui.theme.inTune
-import dev.ntainy.guitar_tuner.ui.theme.inTuneContainer
-import androidx.compose.runtime.remember
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -61,20 +66,25 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import dev.ntainy.guitar_tuner.R
 import dev.ntainy.guitar_tuner.audio.AudioInputDevice
 import dev.ntainy.guitar_tuner.di.AppContainer
 import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
+import dev.ntainy.guitar_tuner.ui.theme.inTune
+import dev.ntainy.guitar_tuner.ui.theme.inTuneContainer
 import dev.ntainy.guitar_tuner.ui.theme.target
 import kotlinx.coroutines.launch
 
@@ -219,11 +229,6 @@ fun TunerContent(
     snackbarHost: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val scheme = MaterialTheme.colorScheme
-    val ringColor by animateColorAsState(
-        targetValue = needleColor(state.centsOff, state.inTune, scheme),
-        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-        label = "noteRing",
-    )
 
     Box(
         modifier = modifier
@@ -233,17 +238,14 @@ fun TunerContent(
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             TunerHeader(
+                tuningName = state.tuningName,
+                tuningNotes = state.tuningNotes,
+                onOpenTunings = onOpenTunings,
                 autoMode = state.autoMode,
                 onAutoMode = onAutoMode,
                 showAutoMode = !state.chromatic,
                 input = state.input,
-                inputCaption = state.inputCaption,
                 onOpenInput = onOpenInput,
-            )
-            TuningRow(
-                tuningName = state.tuningName,
-                instrumentLabel = if (state.chromatic) null else "Guitar 6-string",
-                onOpenTunings = onOpenTunings,
             )
             if (!state.permissionGranted) {
                 MicPermissionGate(
@@ -256,7 +258,6 @@ fun TunerContent(
                 TunerBody(
                     state = state,
                     trace = trace,
-                    ringColor = ringColor,
                     onSelectString = onSelectString,
                     onStringLongPress = onStringLongPress,
                     onStartOver = onStartOver,
@@ -281,18 +282,15 @@ fun TunerContent(
 
 private const val ALL_SET_MESSAGE = "All six strings in tune. You're all set!"
 
-/** Below this the trace is dropped so the headstock keeps its room. */
-private val TRACE_MIN_BODY_HEIGHT = 420.dp
-
 /**
- * Gauge, note and headstock. Stacked on a phone held upright; side by side once the screen is wider than it is
- * tall, which is landscape and every tablet — there the headstock finally gets the height a 6-in-line column wants.
+ * The readout over the headstock, which takes everything that is left. Stacked on a phone held upright; side by
+ * side once the screen is wider than it is tall, which is landscape and every tablet — there the readout sits
+ * centred on the left and the headstock gets the full height on the right.
  */
 @Composable
 private fun TunerBody(
     state: TunerUiState,
     trace: List<TracePoint>,
-    ringColor: Color,
     onSelectString: (Int) -> Unit,
     onStartOver: () -> Unit,
     modifier: Modifier = Modifier,
@@ -300,181 +298,238 @@ private fun TunerBody(
 ) {
     BoxWithConstraints(modifier = modifier) {
         val sideBySide = maxWidth > maxHeight
-        // The trace is the first thing to go on a short phone: the headstock needs that height more.
-        val showTrace = trace.isNotEmpty() && (sideBySide || maxHeight >= TRACE_MIN_BODY_HEIGHT)
-        val gauge: @Composable ColumnScope.() -> Unit = {
-            Spacer(Modifier.height(8.dp))
-            CentsGauge(
+        val readout: @Composable (Modifier) -> Unit = { readoutModifier ->
+            Readout(
                 centsOff = state.centsOff,
-                inTune = state.inTune,
-                toleranceCents = state.toleranceCents,
-                hint = state.hint,
                 centsLabel = state.centsLabel,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(12.dp))
-            NoteGlyph(
-                letter = state.targetLetter,
-                octave = state.targetOctave,
-                ringColor = ringColor,
                 inTune = state.inTune,
-                pitchLabel = if (state.showHz) state.pitchHz?.let(::formatHz) else null,
-                showPitchSlot = state.showHz,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
+                hint = state.hint,
+                detail = state.readoutDetail,
+                toleranceCents = state.toleranceCents,
+                trail = trace,
+                modifier = readoutModifier,
             )
-            if (showTrace) {
-                Spacer(Modifier.height(8.dp))
-                PitchTrace(
-                    points = trace,
-                    toleranceCents = state.toleranceCents,
-                    // The newest sample sits on the right edge, so it also serves as "now".
-                    nowMs = trace.last().atMs,
-                )
-            }
         }
-        val startOver: @Composable () -> Unit = {
-            // Chromatic mode never earns tuned marks, so there is nothing to start over from.
-            if (!state.chromatic) {
-                FilledTonalButton(onClick = onStartOver, enabled = state.anyTuned) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Start over")
-                }
-            }
-        }
-        val headstock: @Composable (Modifier) -> Unit = { headstockModifier ->
+        val instrument: @Composable (Modifier) -> Unit = { instrumentModifier ->
             if (state.chromatic) {
-                Box(modifier = headstockModifier, contentAlignment = Alignment.Center) {
-                    NoteStrip(
-                        midi = state.chromaticMidi,
-                        notation = state.notation,
-                        inTune = state.inTune,
-                    )
-                }
+                ChromaticBlock(state = state, modifier = instrumentModifier)
             } else {
-                Headstock(
-                    layout = state.headstockLayout,
-                    strings = state.strings,
-                    onStringTap = onSelectString,
-                    modifier = headstockModifier,
-                    manualMode = !state.autoMode,
+                HeadstockBlock(
+                    state = state,
+                    onSelectString = onSelectString,
                     onStringLongPress = onStringLongPress,
+                    onStartOver = onStartOver,
+                    modifier = instrumentModifier,
                 )
             }
         }
 
         if (sideBySide) {
-            Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                // Scrollable only as a safety net: at 150 dp the readout fits any landscape phone.
                 Column(
-                    modifier = Modifier.weight(1f).padding(end = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(end = 16.dp),
+                    verticalArrangement = Arrangement.Center,
                 ) {
-                    gauge()
-                    Spacer(Modifier.height(16.dp))
-                    startOver()
+                    readout(Modifier.fillMaxWidth())
                 }
-                headstock(Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp))
+                instrument(Modifier.weight(1f).fillMaxHeight().padding(vertical = 4.dp))
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
-                gauge()
-                headstock(Modifier.weight(1f).fillMaxWidth().padding(vertical = 4.dp))
-                Box(modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp)) { startOver() }
+                Spacer(Modifier.height(8.dp))
+                readout(Modifier.fillMaxWidth())
+                instrument(Modifier.weight(1f).fillMaxWidth().padding(top = 12.dp, bottom = 4.dp))
             }
         }
     }
 }
 
+/** The headstock with its buttons, and "Start over" tucked into the bottom-end corner once a mark has been earned. */
+@Composable
+private fun HeadstockBlock(
+    state: TunerUiState,
+    onSelectString: (Int) -> Unit,
+    onStringLongPress: ((Int) -> Unit)?,
+    onStartOver: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        Headstock(
+            layout = state.headstockLayout,
+            strings = state.strings,
+            onStringTap = onSelectString,
+            modifier = Modifier.fillMaxSize(),
+            manualMode = !state.autoMode,
+            onStringLongPress = onStringLongPress,
+        )
+        AnimatedVisibility(
+            visible = state.anyTuned,
+            modifier = Modifier.align(Alignment.BottomEnd),
+            enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) +
+                scaleIn(MaterialTheme.motionScheme.fastSpatialSpec(), initialScale = 0.8f),
+            exit = fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()) +
+                scaleOut(MaterialTheme.motionScheme.fastSpatialSpec(), targetScale = 0.8f),
+        ) {
+            TextButton(onClick = onStartOver) {
+                Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Start over")
+            }
+        }
+    }
+}
+
+/**
+ * What stands in for the headstock in chromatic mode: the note being heard, large, over the twelve-note strip.
+ * The glyph gives up size before the strip does, so both fit a landscape phone.
+ */
+@Composable
+private fun ChromaticBlock(state: TunerUiState, modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val ringColor by animateColorAsState(
+        targetValue = readingColor(state.centsOff, state.inTune, scheme),
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "noteRing",
+    )
+    BoxWithConstraints(modifier = modifier) {
+        val glyphSize = (maxHeight - CHROMATIC_STRIP_ROOM).coerceIn(NOTE_GLYPH_SIZE, CHROMATIC_GLYPH_SIZE)
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            NoteGlyph(
+                letter = state.targetLetter,
+                octave = state.targetOctave,
+                ringColor = ringColor,
+                inTune = state.inTune,
+                size = glyphSize,
+            )
+            Spacer(Modifier.height(24.dp))
+            NoteStrip(
+                midi = state.chromaticMidi,
+                notation = state.notation,
+                inTune = state.inTune,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/** What the strip and the gap above it need, so the glyph knows how much height is really its own. */
+private val CHROMATIC_STRIP_ROOM = 96.dp
+
 @Composable
 private fun TunerHeader(
+    tuningName: String,
+    tuningNotes: String,
+    onOpenTunings: () -> Unit,
     autoMode: Boolean,
     onAutoMode: (Boolean) -> Unit,
     showAutoMode: Boolean,
     input: AudioInputDevice?,
-    inputCaption: String,
     onOpenInput: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = stringResource(R.string.app_name),
-            // titleMedium, not titleLarge: "OpenGuitarTuner" is four characters longer than the old name and
-            // ellipsises at titleLarge once the AUTO switch and the input button have taken their share of the row.
-            style = MaterialTheme.typography.titleMedium,
-            color = scheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        // Chromatic mode has no strings, so there is nothing for AUTO to choose between.
-        if (showAutoMode) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .toggleable(value = autoMode, role = Role.Switch, onValueChange = onAutoMode)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = "AUTO",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (autoMode) scheme.target else scheme.onSurfaceVariant,
-                )
-                Switch(checked = autoMode, onCheckedChange = null)
-            }
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            TuningChip(name = tuningName, notes = tuningNotes, onClick = onOpenTunings)
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            IconButton(onClick = onOpenInput) {
-                Icon(
-                    imageVector = input?.kind?.icon ?: Icons.Outlined.MicOff,
-                    contentDescription = "Input: ${input?.name ?: "none"}",
-                    tint = if (input == null) scheme.onSurfaceVariant else scheme.onSurface,
-                )
-            }
-            Text(
-                text = inputCaption,
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = 2.dp),
+        // Chromatic mode has no strings, so there is nothing for AUTO to choose between.
+        if (showAutoMode) AutoChip(autoMode = autoMode, onAutoMode = onAutoMode)
+        IconButton(onClick = onOpenInput) {
+            Icon(
+                imageVector = input?.kind?.icon ?: Icons.Outlined.MicOff,
+                contentDescription = "Input: ${input?.name ?: "none"}",
+                tint = if (input == null) scheme.onSurfaceVariant else scheme.onSurface,
             )
         }
     }
 }
 
+/**
+ * The active tuning as a pill: its name, then its six pitch letters, then a chevron that says it opens a list.
+ * In chromatic mode there are no letters and the pill just reads "Chromatic".
+ */
 @Composable
-private fun TuningRow(tuningName: String, instrumentLabel: String?, onOpenTunings: () -> Unit) {
+private fun TuningChip(name: String, notes: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(50)
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onOpenTunings, role = Role.Button, onClickLabel = "Choose tuning")
-            .padding(horizontal = 4.dp, vertical = 8.dp),
+        modifier = modifier
+            .clip(shape)
+            .background(scheme.surfaceContainer)
+            .border(1.dp, scheme.outlineVariant, shape)
+            .clickable(onClick = onClick, role = Role.Button, onClickLabel = "Choose tuning")
+            .padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        // Chromatic is not an instrument's tuning, so it stands alone instead of hanging off a breadcrumb.
-        if (instrumentLabel != null) {
-            Text(text = instrumentLabel, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
-            Text(text = "›", style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
-        }
         Text(
-            text = tuningName,
-            style = MaterialTheme.typography.titleMedium,
+            text = name,
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
             color = scheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (notes.isNotEmpty()) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = notes,
+                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.08.em),
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+        Spacer(Modifier.width(2.dp))
+        Icon(
+            imageVector = Icons.Outlined.ExpandMore,
+            contentDescription = null,
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
         )
     }
 }
 
-/** Faint radial vignette: a touch lighter around the gauge, falling off to the plain background. */
+/** AUTO as an outlined pill that lights brass while the tuner picks the string itself. */
+@Composable
+private fun AutoChip(autoMode: Boolean, onAutoMode: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(50)
+    val border by animateColorAsState(
+        targetValue = if (autoMode) scheme.target else scheme.outline,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "autoBorder",
+    )
+    val text by animateColorAsState(
+        targetValue = if (autoMode) scheme.target else scheme.onSurfaceVariant,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "autoText",
+    )
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .border(1.5.dp, border, shape)
+            .toggleable(value = autoMode, role = Role.Switch, onValueChange = onAutoMode)
+            .semantics { contentDescription = "Auto string detection" }
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = "AUTO", style = MaterialTheme.typography.labelLarge, color = text)
+    }
+}
+
+/** Faint radial vignette: a touch lighter around the readout, falling off to the plain background. */
 private fun Modifier.vignette(inner: Color, outer: Color): Modifier = drawBehind {
     drawRect(
         brush = Brush.radialGradient(

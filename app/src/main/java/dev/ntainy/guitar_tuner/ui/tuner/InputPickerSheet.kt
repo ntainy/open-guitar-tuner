@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import dev.ntainy.guitar_tuner.audio.AudioInputDevice
 import dev.ntainy.guitar_tuner.audio.InputKind
 import dev.ntainy.guitar_tuner.ui.theme.farOff
-import dev.ntainy.guitar_tuner.ui.theme.inTune
 import dev.ntainy.guitar_tuner.ui.theme.target
 import java.util.Locale
 
@@ -151,7 +150,7 @@ private fun InputRow(
                 Text(
                     text = detail,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (detail == "Active") scheme.inTune else scheme.onSurfaceVariant,
+                    color = if (detail == "Active") scheme.target else scheme.onSurfaceVariant,
                 )
             }
         }

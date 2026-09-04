@@ -56,9 +56,9 @@ fun MicPermissionGate(
         )
         Text(
             text = if (permanentlyDenied) {
-                "Microphone access is turned off for GuitarTuner. Enable it in system settings to start tuning."
+                "Microphone access is turned off for OpenGuitarTuner. Enable it in system settings to start tuning."
             } else {
-                "GuitarTuner listens to your guitar through the microphone or a USB interface. " +
+                "OpenGuitarTuner listens to your guitar through the microphone or a USB interface. " +
                     "Nothing is recorded or stored."
             },
             style = MaterialTheme.typography.bodyMedium,

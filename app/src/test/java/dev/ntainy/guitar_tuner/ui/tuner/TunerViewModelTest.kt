@@ -346,6 +346,22 @@ class TunerViewModelTest {
     }
 
     @Test
+    fun theTrailIsASecondAndAHalfLong() = runTest {
+        assertEquals(1_500L, TRACE_WINDOW_MS)
+        settings.update { it.copy(showTrace = true) }
+        val vm = viewModel { testScheduler.currentTime }
+        backgroundScope.launch { vm.trace.collect {} }
+
+        engine.update { it.copy(centsOff = 4.0) }
+        advanceTimeBy(4_000)
+        val points = vm.trace.value
+        val span = points.last().atMs - points.first().atMs
+        assertTrue(span <= 1_500L, "held ${span} ms, more than the window")
+        assertTrue(span >= 1_400L, "held only ${span} ms of a full window")
+        assertTrue(points.size in 36..39, "${points.size} samples at 40 ms is not a second and a half")
+    }
+
+    @Test
     fun theTraceKeepsOnlyItsWindowAndBreaksWhereThePitchDropsOut() = runTest {
         settings.update { it.copy(showTrace = true) }
         val vm = viewModel { testScheduler.currentTime }

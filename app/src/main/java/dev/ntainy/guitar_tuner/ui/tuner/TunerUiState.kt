@@ -42,6 +42,8 @@ data class StringUi(
 @Immutable
 data class TunerUiState(
     val tuningName: String = "",
+    /** The tuning's six pitch letters without octaves, low to high, e.g. "E A D G B E"; empty in chromatic mode. */
+    val tuningNotes: String = "",
     val strings: List<StringUi> = emptyList(),
     /** Full target note name, e.g. "E2"; null while no string is targeted. */
     val targetLabel: String? = null,
@@ -53,11 +55,13 @@ data class TunerUiState(
     val centsLabel: String? = null,
     val inTune: Boolean = false,
     val hint: String = HINT_PLAY,
+    /** Second line of the readout: the target note, with the pitch when Hz are on, e.g. "A2 · 111.52 Hz". */
+    val readoutDetail: String? = null,
     val pitchHz: Double? = null,
     val showHz: Boolean = true,
     val autoMode: Boolean = true,
     val input: AudioInputDevice? = null,
-    /** Short label for the header, e.g. "Mic", "USB", "Test tone". */
+    /** Short label for an input, e.g. "Mic", "USB", "Test tone". */
     val inputCaption: String = CAPTION_NONE,
     val availableInputs: List<AudioInputDevice> = emptyList(),
     /** Key of the input the user picked explicitly in the sheet; null means "Auto". */
@@ -86,6 +90,9 @@ data class TunerUiState(
 
     companion object {
         const val HINT_PLAY = "Play a string"
+
+        /** The idle hint in chromatic mode, where there is no string to play. */
+        const val HINT_PLAY_NOTE = "Play a note"
         const val HINT_IN_TUNE = "In tune"
         const val HINT_FLAT = "Tune up"
         const val HINT_SHARP = "Tune down"
@@ -116,11 +123,12 @@ fun deriveTunerUiState(
     }
     // In chromatic mode the note comes from the engine's nearest-note reading, not from a string of the tuning.
     val targetMidi = if (chromatic) engine.chromaticMidi else engine.targetIndex?.let { tuning.strings.getOrNull(it) }
+    val targetLabel = targetMidi?.let { NoteMath.name(it, notation) }
     val cents = engine.centsOff
     // The engine owns the flag, but the gauge draws a ±tolerance band, so anything inside it must read as in tune.
     val inTune = cents != null && (engine.inTune || abs(cents) <= settings.toleranceCents)
     val hint = when {
-        cents == null -> TunerUiState.HINT_PLAY
+        cents == null -> if (chromatic) TunerUiState.HINT_PLAY_NOTE else TunerUiState.HINT_PLAY
         inTune -> TunerUiState.HINT_IN_TUNE
         cents < 0 -> TunerUiState.HINT_FLAT
         else -> TunerUiState.HINT_SHARP
@@ -132,14 +140,16 @@ fun deriveTunerUiState(
     }
     return TunerUiState(
         tuningName = tuning.name,
+        tuningNotes = if (chromatic) "" else tuningNotes(tuning, notation),
         strings = strings,
-        targetLabel = targetMidi?.let { NoteMath.name(it, notation) },
+        targetLabel = targetLabel,
         targetLetter = targetMidi?.let { NoteMath.letter(it, notation) },
         targetOctave = targetMidi?.let { NoteMath.octave(it).toString() },
         centsOff = cents,
         centsLabel = cents?.let(::formatCents),
         inTune = inTune,
         hint = hint,
+        readoutDetail = readoutDetail(targetLabel, engine.pitchHz, settings.showHz),
         pitchHz = engine.pitchHz,
         showHz = settings.showHz,
         autoMode = engine.autoMode,
@@ -161,6 +171,19 @@ fun deriveTunerUiState(
     )
 }
 
+/** "E A D G B E": the pitch letters of a tuning, low string first, spelled in [notation], octaves dropped. */
+fun tuningNotes(tuning: Tuning, notation: Notation): String =
+    tuning.strings.joinToString(" ") { NoteMath.letter(it, notation) }
+
+/**
+ * "A2 · 111.52 Hz" while Hz are shown and a pitch is being heard, otherwise just the note; null without a target.
+ */
+fun readoutDetail(targetLabel: String?, pitchHz: Double?, showHz: Boolean): String? {
+    if (targetLabel == null) return null
+    val hz = pitchHz?.takeIf { showHz }?.let(::formatHz) ?: return targetLabel
+    return "$targetLabel · $hz"
+}
+
 /** "+3", "−12", "0" — a real minus sign, rounded to the nearest cent. */
 fun formatCents(cents: Double): String {
     val rounded = cents.roundToInt()
@@ -174,7 +197,7 @@ fun formatCents(cents: Double): String {
 /** "110.19 Hz", always two decimals and a dot regardless of locale. */
 fun formatHz(hz: Double): String = String.format(Locale.US, "%.2f Hz", hz)
 
-/** Short header caption for an input, by kind. The full product name lives in the input sheet. */
+/** Short caption for an input, by kind. The full product name lives in the input sheet. */
 fun inputCaption(input: AudioInputDevice?): String = when (input?.kind) {
     null -> TunerUiState.CAPTION_NONE
     InputKind.BUILTIN_MIC -> "Mic"

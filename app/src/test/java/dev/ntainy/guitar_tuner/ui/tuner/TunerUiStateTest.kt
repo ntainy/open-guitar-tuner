@@ -235,4 +235,50 @@ class TunerUiStateTest {
         assertEquals(6, state.strings.size)
         assertEquals("A2", state.targetLabel)
     }
+
+    @Test
+    fun tuningNotesAreTheSixLettersWithoutOctavesInTheCurrentNotation() {
+        assertEquals("E A D G B E", derive().tuningNotes)
+        assertEquals("D A D G B E", derive(tuning = InMemoryTuningsRepository.DROP_D).tuningNotes)
+
+        val halfStepDown = standard.copy(id = "x", name = "Half step down", strings = listOf(39, 44, 49, 54, 58, 63))
+        assertEquals("D♯ G♯ C♯ F♯ A♯ D♯", derive(tuning = halfStepDown).tuningNotes)
+        val flats = TunerSettings(notation = Notation.FLATS)
+        assertEquals("E♭ A♭ D♭ G♭ B♭ E♭", derive(tuning = halfStepDown, settings = flats).tuningNotes)
+    }
+
+    @Test
+    fun chromaticModeHasNoTuningNotesAndAsksForANoteRatherThanAString() {
+        val chromatic = checkNotNull(PresetTunings.byId(PresetIds.CHROMATIC))
+        val idle = derive(tuning = chromatic)
+        assertEquals("", idle.tuningNotes)
+        assertEquals(TunerUiState.HINT_PLAY_NOTE, idle.hint)
+        assertNull(idle.readoutDetail)
+
+        val heard = derive(
+            engine = listening.copy(pitchHz = 261.63, chromaticMidi = 60, centsOff = 0.4),
+            tuning = chromatic,
+        )
+        assertEquals(TunerUiState.HINT_IN_TUNE, heard.hint)
+        assertEquals("C4 · 261.63 Hz", heard.readoutDetail)
+    }
+
+    @Test
+    fun readoutDetailPairsTheTargetWithThePitchOnlyWhileHzAreShown() {
+        assertNull(derive().readoutDetail, "nothing to say without a target")
+        assertNull(readoutDetail(targetLabel = null, pitchHz = 110.0, showHz = true))
+
+        val heard = derive(engine = listening.copy(targetIndex = 1, pitchHz = 111.523, centsOff = 24.0))
+        assertEquals("A2 · 111.52 Hz", heard.readoutDetail)
+
+        val hzOff = derive(
+            engine = listening.copy(targetIndex = 1, pitchHz = 111.523, centsOff = 24.0),
+            settings = TunerSettings(showHz = false),
+        )
+        assertEquals("A2", hzOff.readoutDetail)
+
+        val pinnedButSilent = derive(engine = listening.copy(targetIndex = 2))
+        assertEquals("D3", pinnedButSilent.readoutDetail, "a pinned string is named even before it is played")
+        assertEquals(TunerUiState.HINT_PLAY, pinnedButSilent.hint)
+    }
 }

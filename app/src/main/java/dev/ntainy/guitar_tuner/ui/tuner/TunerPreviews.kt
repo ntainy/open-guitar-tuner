@@ -31,6 +31,9 @@ import dev.ntainy.guitar_tuner.fakes.FakeTunerEngine
 import dev.ntainy.guitar_tuner.fakes.InMemorySettingsRepository
 import dev.ntainy.guitar_tuner.fakes.InMemoryTuningsRepository
 import dev.ntainy.guitar_tuner.ui.theme.GuitarTunerTheme
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.sin
 
 val PREVIEW_BUILTIN_MIC = AudioInputDevice(
     id = 0,
@@ -95,6 +98,8 @@ private val LISTENING = TunerState(
     availableInputs = listOf(PREVIEW_BUILTIN_MIC, PREVIEW_TEST_TONE),
 )
 
+private val CHROMATIC_TUNING: Tuning = checkNotNull(PresetTunings.byId(PresetIds.CHROMATIC))
+
 @Composable
 private fun PreviewScreen(
     state: TunerUiState,
@@ -118,30 +123,23 @@ private fun PreviewScreen(
     }
 }
 
-private const val PHONE_WIDTH = 411
-private const val PHONE_HEIGHT = 780
-private const val LANDSCAPE_WIDTH = 892
-private const val LANDSCAPE_HEIGHT = 411
+private const val PHONE_WIDTH = 360
+private const val PHONE_HEIGHT = 772
+private const val LANDSCAPE_WIDTH = 772
+private const val LANDSCAPE_HEIGHT = 360
 
 /**
- * A plausible six seconds: a pluck that arrives sharp, is turned down past the target, and settles inside the
- * band, with a silent stretch before the next attack. Enough shape to judge the drawing by.
+ * A plausible second and a half ending at [endCents]: a pluck that arrives sharp and settles, with a wobble on the
+ * way. Enough shape to judge the trail by.
  */
-private fun previewTrace(): List<TracePoint> {
+private fun previewTrace(endCents: Float): List<TracePoint> {
     val step = 40L
     val count = (TRACE_WINDOW_MS / step).toInt()
     return List(count) { i ->
-        val t = i * step
-        val cents = when {
-            i < count / 8 -> null
-            else -> {
-                val progress = (i - count / 8).toFloat() / (count - count / 8)
-                val settle = 34f * kotlin.math.exp(-3.2f * progress)
-                val wobble = kotlin.math.sin(progress * 26f).toFloat() * 3.5f * (1f - progress)
-                (settle * kotlin.math.cos(progress * 5.5f).toFloat() + wobble)
-            }
-        }
-        TracePoint(atMs = t, cents = cents)
+        val progress = i.toFloat() / (count - 1)
+        val settle = 30f * exp(-3f * progress) * cos(progress * 5f)
+        val wobble = sin(progress * 22f) * 2.5f * (1f - progress)
+        TracePoint(atMs = i * step, cents = endCents + settle + wobble)
     }
 }
 
@@ -151,21 +149,28 @@ private fun IdlePreview() {
     PreviewScreen(previewContainer(LISTENING).uiState())
 }
 
-@Preview(name = "Flat −18", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Preview(name = "Flat −18 (ink)", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
 @Composable
 private fun FlatPreview() {
     val state = LISTENING.copy(pitchHz = 81.56, confidence = 0.9, level = 0.4, targetIndex = 0, centsOff = -18.0)
-    PreviewScreen(previewContainer(state).uiState())
+    PreviewScreen(previewContainer(state).uiState(), trace = previewTrace(-18f))
 }
 
-@Preview(name = "Sharp +3", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Preview(name = "Sharp +24 (ink)", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
 @Composable
 private fun SharpPreview() {
-    val state = LISTENING.copy(pitchHz = 110.22, confidence = 0.9, level = 0.4, targetIndex = 1, centsOff = 3.4)
-    PreviewScreen(previewContainer(state).uiState())
+    val state = LISTENING.copy(pitchHz = 111.53, confidence = 0.9, level = 0.4, targetIndex = 1, centsOff = 24.0)
+    PreviewScreen(previewContainer(state).uiState(), trace = previewTrace(24f))
 }
 
-@Preview(name = "In tune", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Preview(name = "Far off +41 (coral)", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Composable
+private fun FarOffPreview() {
+    val state = LISTENING.copy(pitchHz = 112.63, confidence = 0.9, level = 0.4, targetIndex = 1, centsOff = 41.0)
+    PreviewScreen(previewContainer(state).uiState(), trace = previewTrace(41f))
+}
+
+@Preview(name = "In tune, two marks", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
 @Composable
 private fun InTunePreview() {
     val state = LISTENING.copy(
@@ -177,10 +182,10 @@ private fun InTunePreview() {
         inTune = true,
         tunedStrings = setOf(0, 1),
     )
-    PreviewScreen(previewContainer(state).uiState())
+    PreviewScreen(previewContainer(state).uiState(), trace = previewTrace(0.4f))
 }
 
-@Preview(name = "All strings tuned", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Preview(name = "All six tuned", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
 @Composable
 private fun AllTunedPreview() {
     val state = LISTENING.copy(
@@ -195,7 +200,7 @@ private fun AllTunedPreview() {
     PreviewScreen(previewContainer(state).uiState())
 }
 
-@Preview(name = "USB input, manual, Drop D", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Preview(name = "USB, manual, Drop D", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
 @Composable
 private fun UsbPreview() {
     val state = LISTENING.copy(
@@ -212,18 +217,6 @@ private fun UsbPreview() {
         tuning = InMemoryTuningsRepository.DROP_D,
     )
     PreviewScreen(container.uiState(selectedInputKey = PREVIEW_USB.key))
-}
-
-@Preview(name = "Permission denied", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
-@Composable
-private fun PermissionDeniedPreview() {
-    PreviewScreen(previewContainer(TunerState(permissionGranted = false)).uiState())
-}
-
-@Preview(name = "Permission denied permanently", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
-@Composable
-private fun PermissionDeniedPermanentlyPreview() {
-    PreviewScreen(previewContainer(TunerState(permissionGranted = false)).uiState(), permanentlyDenied = true)
 }
 
 @Preview(name = "6-in-line headstock", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
@@ -247,6 +240,85 @@ private fun LightPreview() {
     PreviewScreen(previewContainer(state, settings = TunerSettings(showHz = false)).uiState(), dark = false)
 }
 
+@Preview(name = "Chromatic, C4", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Composable
+private fun ChromaticPreview() {
+    val state = LISTENING.copy(
+        pitchHz = 261.9,
+        confidence = 0.9,
+        level = 0.4,
+        chromaticMidi = 60,
+        centsOff = 1.8,
+        inTune = true,
+    )
+    PreviewScreen(previewContainer(state, tuning = CHROMATIC_TUNING).uiState(), trace = previewTrace(1.8f))
+}
+
+@Preview(name = "Chromatic, B3 (last cell)", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Composable
+private fun ChromaticLastCellPreview() {
+    val state = LISTENING.copy(
+        pitchHz = 245.3,
+        confidence = 0.9,
+        level = 0.4,
+        chromaticMidi = 59,
+        centsOff = -11.0,
+    )
+    PreviewScreen(previewContainer(state, tuning = CHROMATIC_TUNING).uiState())
+}
+
+@Preview(name = "Chromatic, listening", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Composable
+private fun ChromaticIdlePreview() {
+    PreviewScreen(previewContainer(LISTENING, tuning = CHROMATIC_TUNING).uiState())
+}
+
+@Preview(name = "Landscape", showBackground = true, widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT)
+@Composable
+private fun LandscapePreview() {
+    val state = LISTENING.copy(
+        pitchHz = 146.9,
+        confidence = 0.9,
+        level = 0.4,
+        targetIndex = 2,
+        centsOff = -7.0,
+        tunedStrings = setOf(0),
+    )
+    PreviewScreen(previewContainer(state).uiState(), trace = previewTrace(-7f))
+}
+
+@Preview(
+    name = "Landscape, 6-in-line, light",
+    showBackground = true,
+    widthDp = LANDSCAPE_WIDTH,
+    heightDp = LANDSCAPE_HEIGHT,
+)
+@Composable
+private fun LandscapeLightPreview() {
+    val state = LISTENING.copy(
+        pitchHz = 329.9,
+        confidence = 0.9,
+        level = 0.4,
+        targetIndex = 5,
+        centsOff = 1.0,
+        inTune = true,
+    )
+    val container = previewContainer(state, settings = TunerSettings(headstockLayout = HeadstockLayout.SIX_IN_LINE))
+    PreviewScreen(container.uiState(), dark = false, trace = previewTrace(1f))
+}
+
+@Preview(name = "Permission denied", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Composable
+private fun PermissionDeniedPreview() {
+    PreviewScreen(previewContainer(TunerState(permissionGranted = false)).uiState())
+}
+
+@Preview(name = "Permission denied permanently", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Composable
+private fun PermissionDeniedPermanentlyPreview() {
+    PreviewScreen(previewContainer(TunerState(permissionGranted = false)).uiState(), permanentlyDenied = true)
+}
+
 @Preview(name = "Input sheet, USB + test tone", showBackground = true, widthDp = PHONE_WIDTH)
 @Composable
 private fun InputSheetPreview() {
@@ -266,16 +338,45 @@ private fun InputSheetPreview() {
     }
 }
 
-@Preview(name = "Gauge states", showBackground = true, widthDp = PHONE_WIDTH)
+@Preview(name = "Readout states", showBackground = true, widthDp = PHONE_WIDTH)
 @Composable
-private fun GaugePreview() {
+private fun ReadoutPreview() {
     GuitarTunerTheme {
         Surface {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                CentsGauge(centsOff = null, inTune = false, toleranceCents = 3.0, hint = TunerUiState.HINT_PLAY)
-                CentsGauge(centsOff = -18.0, inTune = false, toleranceCents = 3.0, hint = TunerUiState.HINT_FLAT)
-                CentsGauge(centsOff = 1.2, inTune = true, toleranceCents = 3.0, hint = TunerUiState.HINT_IN_TUNE)
-                CentsGauge(centsOff = 41.0, inTune = false, toleranceCents = 3.0, hint = TunerUiState.HINT_SHARP)
+                Readout(
+                    centsOff = null,
+                    centsLabel = null,
+                    inTune = false,
+                    hint = TunerUiState.HINT_PLAY,
+                    detail = null,
+                    toleranceCents = 3.0,
+                )
+                Readout(
+                    centsOff = -18.0,
+                    centsLabel = "−18",
+                    inTune = false,
+                    hint = TunerUiState.HINT_FLAT,
+                    detail = "E2 · 81.56 Hz",
+                    toleranceCents = 3.0,
+                    trail = previewTrace(-18f),
+                )
+                Readout(
+                    centsOff = 1.2,
+                    centsLabel = "+1",
+                    inTune = true,
+                    hint = TunerUiState.HINT_IN_TUNE,
+                    detail = "D3",
+                    toleranceCents = 3.0,
+                )
+                Readout(
+                    centsOff = 41.0,
+                    centsLabel = "+41",
+                    inTune = false,
+                    hint = TunerUiState.HINT_SHARP,
+                    detail = "A2 · 112.63 Hz",
+                    toleranceCents = 3.0,
+                )
             }
         }
     }
@@ -291,6 +392,7 @@ private fun StringButtonPreview() {
                 StringButton(label = "A2", state = StringButtonState.TARGET, onClick = {})
                 StringButton(label = "D3", state = StringButtonState.TUNED, onClick = {})
                 StringButton(label = "G♯3", state = StringButtonState.TARGET_TUNED, onClick = {})
+                StringButton(label = "B3", state = StringButtonState.IDLE, onClick = {}, dimmed = true)
             }
         }
     }
@@ -306,72 +408,16 @@ private fun NoteGlyphPreview() {
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 val scheme = MaterialTheme.colorScheme
-                NoteGlyph(
-                    letter = null,
-                    octave = null,
-                    ringColor = needleColor(null, false, scheme),
-                    inTune = false,
-                    pitchLabel = null,
-                )
-                NoteGlyph(
-                    letter = "E",
-                    octave = "2",
-                    ringColor = needleColor(-18.0, false, scheme),
-                    inTune = false,
-                    pitchLabel = "81.56 Hz",
-                )
+                NoteGlyph(letter = null, octave = null, ringColor = readingColor(null, false, scheme), inTune = false)
+                NoteGlyph(letter = "E", octave = "2", ringColor = readingColor(-18.0, false, scheme), inTune = false)
                 NoteGlyph(
                     letter = "F♯",
                     octave = "3",
-                    ringColor = needleColor(0.4, true, scheme),
+                    ringColor = readingColor(0.4, true, scheme),
                     inTune = true,
-                    pitchLabel = "185.04 Hz",
+                    size = CHROMATIC_GLYPH_SIZE,
                 )
             }
         }
     }
 }
-
-@Preview(name = "Pitch trace on", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
-@Composable
-private fun TracePreview() {
-    val state = LISTENING.copy(pitchHz = 110.4, confidence = 0.9, level = 0.4, targetIndex = 1, centsOff = 2.1, inTune = true)
-    PreviewScreen(previewContainer(state).uiState(), trace = previewTrace())
-}
-
-@Preview(name = "Landscape", showBackground = true, widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT)
-@Composable
-private fun LandscapePreview() {
-    val state = LISTENING.copy(pitchHz = 146.9, confidence = 0.9, level = 0.4, targetIndex = 2, centsOff = -7.0)
-    PreviewScreen(previewContainer(state).uiState(), trace = previewTrace())
-}
-
-@Preview(name = "Landscape, 6-in-line, light", showBackground = true, widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT)
-@Composable
-private fun LandscapeLightPreview() {
-    val state = LISTENING.copy(pitchHz = 329.9, confidence = 0.9, level = 0.4, targetIndex = 5, centsOff = 1.0, inTune = true)
-    val container = previewContainer(state, settings = TunerSettings(headstockLayout = HeadstockLayout.SIX_IN_LINE))
-    PreviewScreen(container.uiState(), dark = false, trace = previewTrace())
-}
-
-@Preview(name = "Chromatic, C4", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
-@Composable
-private fun ChromaticPreview() {
-    val state = LISTENING.copy(
-        pitchHz = 261.9,
-        confidence = 0.9,
-        level = 0.4,
-        chromaticMidi = 60,
-        centsOff = 1.8,
-        inTune = true,
-    )
-    PreviewScreen(previewContainer(state, tuning = CHROMATIC_TUNING).uiState())
-}
-
-@Preview(name = "Chromatic, listening", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
-@Composable
-private fun ChromaticIdlePreview() {
-    PreviewScreen(previewContainer(LISTENING, tuning = CHROMATIC_TUNING).uiState())
-}
-
-private val CHROMATIC_TUNING: Tuning = checkNotNull(PresetTunings.byId(PresetIds.CHROMATIC))
