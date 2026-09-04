@@ -1,13 +1,27 @@
 package dev.ntainy.guitar_tuner.di
 
 import android.content.Context
+import dev.ntainy.guitar_tuner.audio.AndroidAudioInputMonitor
+import dev.ntainy.guitar_tuner.audio.AudioInputMonitor
+import dev.ntainy.guitar_tuner.audio.AudioRecordSource
+import dev.ntainy.guitar_tuner.audio.AudioSource
+import dev.ntainy.guitar_tuner.audio.AudioTunerEngine
+import dev.ntainy.guitar_tuner.audio.InputKind
+import dev.ntainy.guitar_tuner.audio.SyntheticToneSource
 import dev.ntainy.guitar_tuner.audio.TunerEngine
+import dev.ntainy.guitar_tuner.data.DataStoreSettingsRepository
+import dev.ntainy.guitar_tuner.data.DataStoreTuningsRepository
 import dev.ntainy.guitar_tuner.data.SettingsRepository
 import dev.ntainy.guitar_tuner.data.TuningsRepository
+import dev.ntainy.guitar_tuner.data.createSettingsDataStore
+import dev.ntainy.guitar_tuner.data.createTuningsDataStore
+import dev.ntainy.guitar_tuner.data.model.PresetIds
 import dev.ntainy.guitar_tuner.data.model.Tuning
-import dev.ntainy.guitar_tuner.fakes.FakeTunerEngine
-import dev.ntainy.guitar_tuner.fakes.InMemorySettingsRepository
-import dev.ntainy.guitar_tuner.fakes.InMemoryTuningsRepository
+import dev.ntainy.guitar_tuner.data.presets.PresetTunings
+import dev.ntainy.guitar_tuner.dsp.HysteresisTargetResolver
+import dev.ntainy.guitar_tuner.dsp.MedianEmaSmoother
+import dev.ntainy.guitar_tuner.dsp.RingBufferFrameAssembler
+import dev.ntainy.guitar_tuner.dsp.YinPitchDetector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,9 +36,9 @@ import kotlinx.serialization.json.Json
 /**
  * Hand-rolled dependency graph. One instance per process, owned by [dev.ntainy.guitar_tuner.TunerApplication].
  *
- * M0 wires the in-memory fakes so the skeleton runs; M5 swaps in the Wave 1 implementations
- * (DataStore repositories, AudioRecord-backed engine). Screens receive the container and build their
- * own ViewModels from it.
+ * Everything is a lazy singleton: DataStore refuses a second instance on the same file, and the engine keeps an
+ * `AudioDeviceCallback` registered for the life of the process. Screens receive the container and build their own
+ * ViewModels from it. Previews and tests subclass this and override the repositories/engine with the fakes.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 open class AppContainer(val appContext: Context) {
@@ -36,14 +50,32 @@ open class AppContainer(val appContext: Context) {
         prettyPrint = true
     }
 
-    open val settingsRepository: SettingsRepository by lazy { InMemorySettingsRepository() }
+    open val settingsRepository: SettingsRepository by lazy {
+        DataStoreSettingsRepository(createSettingsDataStore(appContext, json, appScope))
+    }
 
-    open val tuningsRepository: TuningsRepository by lazy { InMemoryTuningsRepository() }
-
-    open val tunerEngine: TunerEngine by lazy { FakeTunerEngine() }
+    open val tuningsRepository: TuningsRepository by lazy {
+        DataStoreTuningsRepository(createTuningsDataStore(appContext, json, appScope))
+    }
 
     /** Frequency of the debug "Test tone" input; the input sheet drives it, the synthetic source reads it. */
     val testToneFrequencyHz: MutableStateFlow<Double> = MutableStateFlow(110.0)
+
+    open val inputMonitor: AudioInputMonitor by lazy { AndroidAudioInputMonitor(appContext) }
+
+    open val tunerEngine: TunerEngine by lazy {
+        AudioTunerEngine(
+            scope = appScope,
+            inputMonitor = inputMonitor,
+            sourceFactory = ::createSource,
+            detector = YinPitchDetector(),
+            smoother = MedianEmaSmoother(),
+            resolver = HysteresisTargetResolver(),
+            assembler = RingBufferFrameAssembler(),
+            tuningFlow = activeTuning,
+            settingsFlow = settingsRepository.settings,
+        )
+    }
 
     /** The tuning selected in settings, falling back to Standard if the id no longer exists. */
     val activeTuning: Flow<Tuning> by lazy {
@@ -51,6 +83,11 @@ open class AppContainer(val appContext: Context) {
             .map { it.activeTuningId }
             .distinctUntilChanged()
             .flatMapLatest { id -> tuningsRepository.tuning(id) }
-            .map { it ?: InMemoryTuningsRepository.STANDARD }
+            .map { it ?: standardTuning }
     }
+
+    private val standardTuning: Tuning by lazy { checkNotNull(PresetTunings.byId(PresetIds.STANDARD)) }
+
+    private fun createSource(device: dev.ntainy.guitar_tuner.audio.AudioInputDevice): AudioSource =
+        if (device.kind == InputKind.TEST_TONE) SyntheticToneSource(testToneFrequencyHz) else AudioRecordSource(appContext, device)
 }
