@@ -33,6 +33,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import dev.ntainy.guitar_tuner.ui.theme.inTune
+import dev.ntainy.guitar_tuner.ui.theme.inTuneContainer
+import androidx.compose.runtime.remember
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.Snackbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -122,7 +130,7 @@ fun TunerScreen(container: AppContainer, onOpenTunings: () -> Unit, modifier: Mo
         state = state,
         permanentlyDenied = permanentlyDenied,
         onOpenTunings = onOpenTunings,
-        onSelectString = viewModel::selectString,
+        onSelectString = viewModel::onStringTap,
         onAutoMode = viewModel::setAutoMode,
         onStartOver = viewModel::startOver,
         onOpenInput = { showInputSheet = true },
@@ -167,6 +175,10 @@ fun TunerContent(
 ) {
     val scheme = MaterialTheme.colorScheme
     val ringColor by animateColorAsState(needleColor(state.centsOff, state.inTune, scheme), label = "noteRing")
+    val snackbarHost = remember { SnackbarHostState() }
+    LaunchedEffect(state.allTuned) {
+        if (state.allTuned) snackbarHost.showSnackbar(ALL_SET_MESSAGE, duration = SnackbarDuration.Short)
+    }
 
     Box(
         modifier = modifier
@@ -215,6 +227,7 @@ fun TunerContent(
                     strings = state.strings,
                     onStringTap = onSelectString,
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp),
+                    manualMode = !state.autoMode,
                 )
                 FilledTonalButton(
                     onClick = onStartOver,
@@ -227,8 +240,22 @@ fun TunerContent(
                 }
             }
         }
+        SnackbarHost(
+            hostState = snackbarHost,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+        ) { data ->
+            Snackbar(containerColor = scheme.inTuneContainer, contentColor = scheme.inTune) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(data.visuals.message)
+                }
+            }
+        }
     }
 }
+
+private const val ALL_SET_MESSAGE = "All six strings in tune. You're all set!"
 
 @Composable
 private fun TunerHeader(

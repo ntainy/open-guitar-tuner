@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -31,6 +34,9 @@ import dev.ntainy.guitar_tuner.ui.theme.target
 
 val STRING_BUTTON_SIZE = 56.dp
 
+/** Smallest the headstock may shrink a button to when six of them must share a short column. */
+val MIN_STRING_BUTTON_SIZE = 36.dp
+
 enum class StringButtonState {
     IDLE,
     TARGET,
@@ -51,8 +57,9 @@ enum class StringButtonState {
 }
 
 /**
- * 56 dp circle for one string: outline ring at rest, brass ring + brass text for the target, mint ring + text and a
- * check badge when tuned; target and tuned together keeps the brass text under a mint ring.
+ * 56 dp circle for one string (smaller when the parent constrains it): outline ring at rest, brass ring + brass
+ * text for the target, mint ring + text and a check badge when tuned; target and tuned together keeps the brass
+ * text under a mint ring. [dimmed] fades the button, used for the strings that are not pinned in manual mode.
  */
 @Composable
 fun StringButton(
@@ -61,6 +68,7 @@ fun StringButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
+    dimmed: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     val ringTarget = when (state) {
@@ -75,10 +83,12 @@ fun StringButton(
     }
     val ringColor by animateColorAsState(ringTarget, label = "ring")
     val textColor by animateColorAsState(textTarget, label = "text")
+    val alpha by animateFloatAsState(if (dimmed) 0.38f else 1f, label = "dim")
     val octave = label.takeLastWhile { it.isDigit() }
     val letter = label.dropLast(octave.length)
 
-    Box(modifier = modifier.size(STRING_BUTTON_SIZE)) {
+    BoxWithConstraints(modifier = modifier.size(STRING_BUTTON_SIZE).alpha(alpha)) {
+        val compact = maxWidth < 48.dp
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -92,9 +102,11 @@ fun StringButton(
             Text(
                 text = buildAnnotatedString {
                     append(letter)
-                    withStyle(SpanStyle(fontSize = 12.sp, baselineShift = BaselineShift(0.35f))) { append(octave) }
+                    withStyle(SpanStyle(fontSize = if (compact) 9.sp else 12.sp, baselineShift = BaselineShift(0.35f))) {
+                        append(octave)
+                    }
                 },
-                style = MaterialTheme.typography.titleMedium,
+                style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
                 color = textColor,
                 maxLines = 1,
                 softWrap = false,
@@ -104,7 +116,7 @@ fun StringButton(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .size(18.dp)
+                    .size(if (compact) 14.dp else 18.dp)
                     .background(scheme.inTune, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
@@ -112,7 +124,7 @@ fun StringButton(
                     imageVector = Icons.Outlined.Check,
                     contentDescription = null,
                     tint = scheme.onTertiary,
-                    modifier = Modifier.size(12.dp),
+                    modifier = Modifier.size(if (compact) 9.dp else 12.dp),
                 )
             }
         }

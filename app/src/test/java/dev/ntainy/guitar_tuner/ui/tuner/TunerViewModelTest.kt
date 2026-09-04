@@ -243,4 +243,17 @@ class TunerViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun tappingThePinnedStringAgainReturnsToAuto() = runTest {
+        val vm = viewModel()
+        vm.onStringTap(2)
+        assertFalse(engine.state.value.autoMode)
+        assertEquals(2, engine.state.value.targetIndex)
+        vm.onStringTap(4)
+        assertFalse(engine.state.value.autoMode, "a different string re-pins instead of toggling")
+        assertEquals(4, engine.state.value.targetIndex)
+        vm.onStringTap(4)
+        assertTrue(engine.state.value.autoMode, "tapping the pinned string hands control back to AUTO")
+    }
 }

@@ -20,7 +20,7 @@ commands and conventions.
 
 - Six-string preview on your own headstock art, 3+3 or 6-in-line, with the active tuning post ringed in brass.
 - Cents gauge (±50) with a springing needle, "Tune up / Tune down / In tune" hint, and tuned-string marks.
-- AUTO string detection with hysteresis, or tap a string to pin it.
+- AUTO string detection with hysteresis, or tap a string to pin it (tap it again to hand back to AUTO); a toast when all six are in tune.
 - Unlimited custom tunings with a full editor; 23 presets grouped as Standard, Power, Transposed, Open, Extras.
 - Input from the built-in microphone or a USB audio interface, chosen automatically or by hand.
 - Reference pitch 415–466 Hz, tolerance 1–10 cents, sharps or flats, dark/light theme, keep-screen-on.

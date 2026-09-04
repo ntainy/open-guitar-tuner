@@ -38,6 +38,12 @@ class TunerViewModel(
     /** Pin a string; the engine turns AUTO off. */
     fun selectString(index: Int) = engine.selectString(index)
 
+    /** A tap on a string button: pin it, or tap the pinned string again to hand control back to AUTO. */
+    fun onStringTap(index: Int) {
+        val engineState = engine.state.value
+        if (!engineState.autoMode && engineState.targetIndex == index) engine.setAutoMode(true) else engine.selectString(index)
+    }
+
     fun setAutoMode(enabled: Boolean) = engine.setAutoMode(enabled)
 
     fun startOver() = engine.startOver()

@@ -129,12 +129,24 @@ class HysteresisTargetResolverHarmonicsTest {
     }
 
     @Test
-    fun freshOctaveReadingResolvesToTheFundamentalString() {
+    fun freshReadingIsTakenAtFaceValueEvenWhenItIsAnOctaveOfAnotherString() {
         val r = HysteresisTargetResolver()
         val m = r.resolveMatch(165.76, standard)!!
-        kotlin.test.assertEquals(0, m.index, "165.8 Hz is the low E an octave up, not a flat D3")
-        kotlin.test.assertEquals(2, m.fold)
-        kotlin.test.assertEquals(10.0, m.centsOff, 1.5)
+        kotlin.test.assertEquals(2, m.index, "with no current string, 165.8 Hz is a sharp D3, not a folded low E")
+        kotlin.test.assertEquals(1, m.fold)
+    }
+
+    @Test
+    fun aStringSoundingAtAnOctaveOfAnotherStringIsNotStolenByIt() {
+        // The 2nd string still sounds A3 (220 Hz) after the tuning changed its target to B3.
+        val r = HysteresisTargetResolver()
+        // 220 Hz sits exactly between G3 and B3 in Standard; either is fine, the A string (index 1) is not.
+        val seen = (1..6).map { r.resolveMatch(220.0, standard)!! }
+        seen.forEach { m ->
+            kotlin.test.assertTrue(m.index == 3 || m.index == 4, "expected G3 or B3, was ${m.index}")
+            kotlin.test.assertEquals(1, m.fold, "never matched through the A string's octave")
+            kotlin.test.assertEquals(200.0, kotlin.math.abs(m.centsOff), 1.0)
+        }
     }
 
     @Test

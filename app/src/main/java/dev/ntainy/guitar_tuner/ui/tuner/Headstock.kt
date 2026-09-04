@@ -121,6 +121,7 @@ fun Headstock(
     strings: List<StringUi>,
     onStringTap: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    manualMode: Boolean = false,
 ) {
     val spec = layout.spec
     val targetIndex = strings.firstOrNull { it.isTarget }?.index
@@ -142,13 +143,24 @@ fun Headstock(
                     onClick = { onStringTap(string.index) },
                     modifier = Modifier.layoutId(string.index),
                     contentDescription = string.accessibilityLabel,
+                    dimmed = manualMode && !string.isTarget,
                 )
             }
         },
     ) { measurables, constraints ->
-        val buttonPx = STRING_BUTTON_SIZE.roundToPx()
         val gapPx = COLUMN_GAP.roundToPx()
-        val minSpacing = (buttonPx + BUTTON_MIN_GAP.roundToPx()).toFloat()
+        val minGapPx = BUTTON_MIN_GAP.roundToPx()
+        // Six buttons in one column need 6 × 56 dp; on a short screen shrink them (down to 36 dp) so they fit.
+        val perSide = ButtonSide.entries.maxOf { side -> strings.count { spec.buttonSides.getOrNull(it.index) == side } }
+            .coerceAtLeast(1)
+        val fullPx = STRING_BUTTON_SIZE.roundToPx()
+        val buttonPx = if (constraints.hasBoundedHeight) {
+            minOf(fullPx, (constraints.maxHeight - (perSide - 1) * minGapPx) / perSide)
+                .coerceAtLeast(MIN_STRING_BUTTON_SIZE.roundToPx())
+        } else {
+            fullPx
+        }
+        val minSpacing = (buttonPx + minGapPx).toFloat()
         val columns = spec.columns
         val width = constraints.maxWidth
         val imageMaxW = (width - columns * (buttonPx + gapPx)).coerceAtLeast(1)

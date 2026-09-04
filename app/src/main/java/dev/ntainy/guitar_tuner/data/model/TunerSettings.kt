@@ -28,7 +28,7 @@ enum class HeadstockLayout(val label: String) {
 @Serializable
 data class TunerSettings(
     val a4Hz: Double = 440.0,
-    val toleranceCents: Double = 3.0,
+    val toleranceCents: Double = 5.0,
     val inputPolicy: InputPolicy = InputPolicy.PREFER_USB,
     val preferredInputKey: String? = null,
     val notation: Notation = Notation.SHARPS,

@@ -5,12 +5,15 @@ import kotlin.math.abs
 /**
  * [TargetResolver] with overtone folding and hysteresis so the chosen string does not flicker.
  *
- * Every string is scored as `|cents| + penalty` for its best [Harmonics] fold (fundamental or an overtone within
- * [maxFoldCents]). The first call picks the best score (lowest index on a tie, so duplicated notes such as the two
- * D3 strings of "Double Daddy" resolve deterministically). Afterwards the current string is kept unless another
- * string scores better by more than [switchMarginCents] on [framesToSwitch] consecutive calls. Hysteresis is
- * meant for a ringing note; the engine calls [reset] on every new attack so a fresh pluck picks its string at
- * once. A pitch whose best
+ * Every string is scored as `|cents| + penalty`. Only the *current* string may be matched through an overtone
+ * fold ([Harmonics], within [maxFoldCents]): folding is a way to stay locked on the string being tuned while its
+ * fundamental fades, never a way to pick a different string. Every other string is scored on its fundamental, so
+ * a string that happens to sound at an octave of another string (an old A3 now meant to be B3) reads as "B3, 200
+ * cents flat" rather than jumping to the A string. The first call picks the best fundamental score (lowest index
+ * on a tie, so duplicated notes such as the two D3 strings of "Double Daddy" resolve deterministically).
+ * Afterwards the current string is kept unless another string scores better by more than [switchMarginCents] on
+ * [framesToSwitch] consecutive calls. Hysteresis is meant for a ringing note; the engine calls [reset] on every
+ * new attack so a fresh pluck picks its string at once. A pitch whose best
  * score exceeds [implausibleCents] (for example a 45 Hz hum against a low E of 82 Hz) is reported as null and
  * leaves the state untouched. [reset] forgets the current string; call it when the tuning changes.
  *
@@ -54,7 +57,7 @@ class HysteresisTargetResolver(
         var best = 0
         var bestScore = Double.MAX_VALUE
         for (i in targetsHz.indices) {
-            val fold = Harmonics.bestFold(pitchHz, targetsHz[i], maxFoldCents)
+            val fold = if (i == current) Harmonics.bestFold(pitchHz, targetsHz[i], maxFoldCents) else 1
             val c = Harmonics.cents(pitchHz, targetsHz[i], fold)
             val score = abs(c) + Harmonics.penaltyCents(fold)
             folds[i] = fold

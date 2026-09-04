@@ -73,6 +73,8 @@ data class TunerUiState(
 ) {
     val anyTuned: Boolean get() = strings.any { it.isTuned }
 
+    val allTuned: Boolean get() = strings.isNotEmpty() && strings.all { it.isTuned }
+
     val isTestToneInput: Boolean get() = input?.kind == InputKind.TEST_TONE
 
     companion object {

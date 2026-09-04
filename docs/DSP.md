@@ -188,7 +188,7 @@ showed up in the per-frame log (`adb logcat -s TunerFrames:V`, debug builds) and
 | Problem seen on the phone | Stage | Where |
 |---|---|---|
 | A 41–55 Hz room hum at 1/10 of a note's level read as "E2, 900 cents flat" between plucks | `NoiseGate`: a frame must be 2× louder than the quietest second of the last eight (floor ≥ 0.004, threshold capped at 0.02 so a continuous tone never gates itself) | engine, before the smoother |
-| Decaying strings handed YIN their 2nd/3rd overtone (392 Hz on the G string → "E4 +300") | `Harmonics` + `HysteresisTargetResolver.resolveMatch`: every string is scored with its best overtone fold (penalties 20/45/60 cents for ×2/×3/×4); a best score above 600 cents is "not a string" | resolver |
+| Decaying strings handed YIN their 2nd/3rd overtone (392 Hz on the G string → "E4 +300") | `Harmonics` + `HysteresisTargetResolver.resolveMatch`: the *current* string may be matched through its best overtone fold (penalties 20/45/60 cents for ×2/×3/×4); every other string is scored on its fundamental only, so folding keeps a lock but never steals a string (a 2nd string still sounding A3 after its target became B3 reads "B3, 200 cents flat", not "A string in tune"); a best score above 600 cents is "not a string" | resolver |
 | Octave-*down* errors in the decay with high confidence (A2 → 54.6 Hz, G3 → 48.9 Hz) | `OctaveGuard`: while a note rings, a reading within 40 cents of one or two octaves of the last accepted pitch is folded back onto it | engine, before the smoother |
 | The first ~0.3 s of every pluck is sharp and unstable (readings 20–200 cents off at 0.1 s), then the string drifts flat by 2–3 cents over two seconds | `OnsetDetector` (chunk 1.8× louder than the decayed peak) → hold the reading for 7 frames (≈300 ms), then restart the smoother and the octave guard from the settled pitch; smoother now `medianWindow = 5`, `alpha = 0.3` | engine |
 | A pluck's scattered attack readings (215, 228, 61 Hz) were accepted as a "consistent" jump | `MedianEmaSmoother`: the `jumpFrames` outliers must agree within `jumpSpreadCents` (40) before the smoother follows them; a median more than `snapCents` (25) away snaps instead of easing | smoother |
@@ -198,3 +198,10 @@ Measured on the phone over comparable runs (six strings plucked, then one string
 from 46 to 6, 127 octave errors were folded back, 224 attack frames were held, and no sub-60 Hz frame reached
 the display. The remaining 2–3 cent flat drift over a pluck's decay is the string
 itself (amplitude-dependent tension), not the detector; read the gauge about half a second after the pluck.
+
+### Known limitation
+
+A string that sounds exactly at another string's target (or an octave of it) is genuinely ambiguous to a pitch
+detector. The rules above bias towards the fundamental reading, so such a string shows as "far off" on its own
+row rather than being claimed by the other string; when that is still not what you want, tap the string to pin
+it (tap again to return to AUTO).

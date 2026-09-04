@@ -5,6 +5,7 @@ package dev.ntainy.guitar_tuner.ui.settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -202,6 +203,10 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions, modifier: 
                     headlineContent = { Text("Typeface") },
                     supportingContent = { Text("Bricolage Grotesque by Mathieu Triay, SIL Open Font License 1.1") },
                 )
+                ListItem(
+                    headlineContent = { Text("Made by") },
+                    supportingContent = { Text("ntainy · 2026") },
+                )
             }
         }
     }
@@ -333,19 +338,10 @@ private fun <T> SegmentedRow(
     modifier: Modifier = Modifier,
     description: ((T) -> String)? = null,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
-        )
-        SingleChoiceSegmentedButtonRow {
+    // Two options sit beside the title; three or more get their own full-width line so nothing wraps on a 360 dp screen.
+    val stacked = options.size >= 3
+    val buttons: @Composable () -> Unit = {
+        SingleChoiceSegmentedButtonRow(modifier = if (stacked) Modifier.fillMaxWidth() else Modifier) {
             options.forEachIndexed { index, option ->
                 SegmentedButton(
                     selected = option == selected,
@@ -353,7 +349,7 @@ private fun <T> SegmentedRow(
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                     icon = {},
                     label = { Text(label(option), maxLines = 1, softWrap = false) },
-                    modifier = Modifier.widthIn(min = 96.dp).let { base ->
+                    modifier = (if (stacked) Modifier else Modifier.widthIn(min = 96.dp)).let { base ->
                         if (description == null) base else {
                             val text = description(option)
                             base.semantics { contentDescription = text }
@@ -361,6 +357,30 @@ private fun <T> SegmentedRow(
                     },
                 )
             }
+        }
+    }
+    if (stacked) {
+        Column(
+            modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            buttons()
+        }
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            buttons()
         }
     }
 }
