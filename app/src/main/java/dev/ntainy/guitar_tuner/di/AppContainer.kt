@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -40,6 +41,9 @@ open class AppContainer(val appContext: Context) {
     open val tuningsRepository: TuningsRepository by lazy { InMemoryTuningsRepository() }
 
     open val tunerEngine: TunerEngine by lazy { FakeTunerEngine() }
+
+    /** Frequency of the debug "Test tone" input; the input sheet drives it, the synthetic source reads it. */
+    val testToneFrequencyHz: MutableStateFlow<Double> = MutableStateFlow(110.0)
 
     /** The tuning selected in settings, falling back to Standard if the id no longer exists. */
     val activeTuning: Flow<Tuning> by lazy {

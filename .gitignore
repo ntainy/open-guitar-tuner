@@ -17,3 +17,6 @@ local.properties
 
 # Kotlin 2.x session files
 .kotlin/
+
+# Claude Code agent worktrees
+.claude/worktrees/
