@@ -24,24 +24,31 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
+import dev.ntainy.guitar_tuner.ui.theme.Bricolage
 import dev.ntainy.guitar_tuner.ui.theme.inTune
 import dev.ntainy.guitar_tuner.ui.theme.target
 
-val STRING_BUTTON_SIZE = 56.dp
+val STRING_BUTTON_SIZE = 60.dp
 
-/** Smallest the headstock may shrink a button to when six of them must share a short column. */
-val MIN_STRING_BUTTON_SIZE = 30.dp
+/** Smallest the headstock may shrink a button to when the posts sit close together. */
+val MIN_STRING_BUTTON_SIZE = 40.dp
 
 /** Corner radius as a percentage of the button: a circle at rest, squared off while it is the target. */
 private const val CORNER_IDLE_PERCENT = 50f
 private const val CORNER_TARGET_PERCENT = 32f
+
+/** The button sits over the art, so its face is very nearly, but not quite, opaque. */
+private const val FACE_ALPHA = 0.94f
 
 enum class StringButtonState {
     IDLE,
@@ -65,9 +72,10 @@ enum class StringButtonState {
 }
 
 /**
- * 56 dp button for one string (smaller when the parent constrains it): outline ring at rest, brass ring + brass
- * text for the target, mint ring + text and a check badge when tuned; target and tuned together keeps the brass
- * text under a mint ring. [dimmed] fades the button, used for the strings that are not pinned in manual mode.
+ * 60 dp button for one string, sitting on its tuning post (smaller when the parent constrains it): outline ring at
+ * rest, brass ring + brass text for the target, mint ring + text and a check badge when tuned; target and tuned
+ * together keeps the brass text under a mint ring. [dimmed] fades the button, used for the strings that are not
+ * pinned in manual mode.
  *
  * The button is a circle at rest and springs to a squared-off shape while it is the target, so the live string is
  * distinguishable by silhouette and not by colour alone. [onLongClick] plays the string's reference tone.
@@ -97,7 +105,11 @@ fun StringButton(
     }
     val ringColor by animateColorAsState(ringTarget, MaterialTheme.motionScheme.defaultEffectsSpec(), label = "ring")
     val textColor by animateColorAsState(textTarget, MaterialTheme.motionScheme.defaultEffectsSpec(), label = "text")
-    val alpha by animateFloatAsState(if (dimmed) 0.38f else 1f, MaterialTheme.motionScheme.defaultEffectsSpec(), label = "dim")
+    val alpha by animateFloatAsState(
+        targetValue = if (dimmed) 0.38f else 1f,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+        label = "dim",
+    )
     val cornerPercent by animateFloatAsState(
         targetValue = if (state.isTarget) CORNER_TARGET_PERCENT else CORNER_IDLE_PERCENT,
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
@@ -113,7 +125,7 @@ fun StringButton(
             modifier = Modifier
                 .matchParentSize()
                 .clip(shape)
-                .background(scheme.surfaceContainer)
+                .background(scheme.surfaceContainer.copy(alpha = FACE_ALPHA))
                 .border(if (compact) 1.5.dp else 2.dp, ringColor, shape)
                 .semantics { if (contentDescription != null) this.contentDescription = contentDescription }
                 .combinedClickable(
@@ -132,11 +144,18 @@ fun StringButton(
             Text(
                 text = buildAnnotatedString {
                     append(letter)
-                    withStyle(SpanStyle(fontSize = if (compact) 9.sp else 12.sp, baselineShift = BaselineShift(0.35f))) {
-                        append(octave)
-                    }
+                    val octaveStyle = SpanStyle(
+                        fontSize = if (compact) 10.sp else 12.sp,
+                        baselineShift = BaselineShift(0.35f),
+                    )
+                    withStyle(octaveStyle) { append(octave) }
                 },
-                style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
+                style = TextStyle(
+                    fontFamily = Bricolage,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = if (compact) 17.sp else 22.sp,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                ),
                 color = textColor,
                 maxLines = 1,
                 softWrap = false,

@@ -170,7 +170,8 @@ class TunerViewModel(
     /** A tap on a string button: pin it, or tap the pinned string again to hand control back to AUTO. */
     fun onStringTap(index: Int) {
         val engineState = engine.state.value
-        if (!engineState.autoMode && engineState.targetIndex == index) engine.setAutoMode(true) else engine.selectString(index)
+        val unpinning = !engineState.autoMode && engineState.targetIndex == index
+        if (unpinning) engine.setAutoMode(true) else engine.selectString(index)
     }
 
     fun setAutoMode(enabled: Boolean) = engine.setAutoMode(enabled)
