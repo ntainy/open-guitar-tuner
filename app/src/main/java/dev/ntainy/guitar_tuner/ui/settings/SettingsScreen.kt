@@ -351,10 +351,13 @@ private fun <T> SegmentedRow(
                     selected = option == selected,
                     onClick = { onSelect(option) },
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                    label = { Text(label(option)) },
-                    modifier = if (description == null) Modifier else {
-                        val text = description(option)
-                        Modifier.semantics { contentDescription = text }
+                    icon = {},
+                    label = { Text(label(option), maxLines = 1, softWrap = false) },
+                    modifier = Modifier.widthIn(min = 96.dp).let { base ->
+                        if (description == null) base else {
+                            val text = description(option)
+                            base.semantics { contentDescription = text }
+                        }
                     },
                 )
             }

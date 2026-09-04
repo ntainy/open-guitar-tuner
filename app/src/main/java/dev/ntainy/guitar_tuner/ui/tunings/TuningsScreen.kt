@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -200,7 +201,9 @@ private fun HeadstockLayoutSelector(
                     selected = option == layout,
                     onClick = { onLayoutChange(option) },
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = HeadstockLayout.entries.size),
-                    label = { Text(option.label) },
+                    icon = {},
+                    label = { Text(option.label, maxLines = 1, softWrap = false) },
+                    modifier = Modifier.widthIn(min = 96.dp),
                 )
             }
         }
