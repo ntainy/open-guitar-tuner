@@ -10,8 +10,20 @@ Material 3, and a small hand-written YIN pitch detector.
 
 ## Status
 
-Milestone 0 (foundation) is in place: build, theme, navigation skeleton, contracts. See `docs/PLAN.md` for the
-roadmap and `CLAUDE.md` for build commands and conventions.
+MVP feature-complete and unit-tested (172 tests across `:dsp` and `:app`); on-device verification with a real guitar
+and the USB interface is the next step. See `docs/PLAN.md` for the roadmap, `docs/ARCHITECTURE.md` for how the
+pieces fit, `docs/DSP.md` for the pitch detector, `docs/TUNINGS.md` for the preset list, and `CLAUDE.md` for build
+commands and conventions.
+
+## Features
+
+- Six-string preview on your own headstock art, 3+3 or 6-in-line, with the active tuning post ringed in brass.
+- Cents gauge (±50) with a springing needle, "Tune up / Tune down / In tune" hint, and tuned-string marks.
+- AUTO string detection with hysteresis, or tap a string to pin it.
+- Unlimited custom tunings with a full editor; 23 presets grouped as Standard, Power, Transposed, Open, Extras.
+- Input from the built-in microphone or a USB audio interface, chosen automatically or by hand.
+- Reference pitch 415–466 Hz, tolerance 1–10 cents, sharps or flats, dark/light theme, keep-screen-on.
+- Debug builds add a synthetic "Test tone" input for exercising the UI without a guitar.
 
 ## Building
 
