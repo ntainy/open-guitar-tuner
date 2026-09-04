@@ -15,5 +15,17 @@ interface TargetResolver {
      */
     fun resolve(pitchHz: Double, targetsHz: DoubleArray): Int
 
+    /**
+     * Richer form of [resolve]: the string, whether the pitch is one of its overtones ([TargetMatch.fold]), and
+     * the cents the string is off once the overtone is folded back. Returns null when the pitch is not plausibly
+     * any string of the tuning (far below the lowest or between nothing), which callers should treat as silence.
+     *
+     * The default delegates to [resolve] with no overtone handling.
+     */
+    fun resolveMatch(pitchHz: Double, targetsHz: DoubleArray): TargetMatch? {
+        val index = resolve(pitchHz, targetsHz)
+        return TargetMatch(index, 1, NoteMath.cents(pitchHz, targetsHz[index]))
+    }
+
     fun reset()
 }

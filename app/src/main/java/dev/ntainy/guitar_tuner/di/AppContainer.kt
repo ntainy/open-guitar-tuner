@@ -69,7 +69,7 @@ open class AppContainer(val appContext: Context) {
             inputMonitor = inputMonitor,
             sourceFactory = ::createSource,
             detector = YinPitchDetector(),
-            smoother = MedianEmaSmoother(),
+            smoother = MedianEmaSmoother(medianWindow = 5, alpha = 0.3),
             resolver = HysteresisTargetResolver(),
             assembler = RingBufferFrameAssembler(),
             tuningFlow = activeTuning,

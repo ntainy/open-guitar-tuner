@@ -10,10 +10,13 @@ import kotlin.math.abs
  * - `null` estimates, and estimates whose confidence is below [minConfidence], count as empty frames. The last
  *   smoothed value is held for up to `nullFramesToReset − 1` empty frames; on the [nullFramesToReset]-th the
  *   smoother resets and returns `null`.
- * - A value further than [jumpCents] from the current smoothed value is ignored unless it is the [jumpFrames]-th
- *   such value in a row, in which case the smoother jumps to the median of that run (a genuine string change).
+ * - A value further than [jumpCents] from the current smoothed value is ignored until [jumpFrames] such values in
+ *   a row agree with each other within [jumpSpreadCents]; then the smoother jumps to their median (a genuine
+ *   string change). A pluck's attack transient (a few scattered readings) therefore never gets through.
  * - Otherwise the value joins a window of the last [medianWindow] accepted values, and the window's median is fed
- *   to the EMA: `smoothed += alpha · (median − smoothed)`.
+ *   to the EMA: `smoothed += alpha · (median − smoothed)`. When the median has moved more than [snapCents] from
+ *   the smoothed value (a string change or the end of a pluck's attack transient) the output snaps to the median
+ *   instead of easing towards it, so no intermediate pitch is ever shown.
  *
  * Output is `440 · 2^(cents / 1200)` of the smoothed cents value. Nothing is allocated after construction.
  *
@@ -23,6 +26,8 @@ import kotlin.math.abs
  * @param alpha EMA coefficient in (0, 1]; 1 disables the averaging
  * @param nullFramesToReset consecutive empty frames after which the output becomes `null`
  * @param minConfidence estimates below this confidence count as empty frames
+ * @param snapCents median-to-smoothed distance beyond which the EMA is bypassed
+ * @param jumpSpreadCents how closely the [jumpFrames] outliers must agree before the smoother follows them
  */
 class MedianEmaSmoother(
     private val medianWindow: Int = 3,
@@ -31,6 +36,8 @@ class MedianEmaSmoother(
     private val alpha: Double = 0.45,
     private val nullFramesToReset: Int = 4,
     private val minConfidence: Double = 0.5,
+    private val snapCents: Double = 25.0,
+    private val jumpSpreadCents: Double = 40.0,
 ) : PitchSmoother {
     init {
         require(medianWindow >= 1 && medianWindow % 2 == 1) {
@@ -40,6 +47,8 @@ class MedianEmaSmoother(
         require(jumpFrames >= 1) { "jumpFrames must be positive, was $jumpFrames" }
         require(alpha > 0.0 && alpha <= 1.0) { "alpha must be in (0, 1], was $alpha" }
         require(nullFramesToReset >= 1) { "nullFramesToReset must be positive, was $nullFramesToReset" }
+        require(snapCents >= 0.0) { "snapCents must not be negative, was $snapCents" }
+        require(jumpSpreadCents >= 0.0) { "jumpSpreadCents must not be negative, was $jumpSpreadCents" }
     }
 
     private val history = DoubleArray(medianWindow)
@@ -47,6 +56,7 @@ class MedianEmaSmoother(
     private var historyNext = 0
     private val farRun = DoubleArray(jumpFrames)
     private var farCount = 0
+    private var farNext = 0
     private val scratch = DoubleArray(maxOf(medianWindow, jumpFrames))
     private var smoothedCents = Double.NaN
     private var emptyRun = 0
@@ -70,10 +80,13 @@ class MedianEmaSmoother(
         }
 
         if (abs(cents - smoothedCents) > jumpCents) {
-            farRun[farCount++] = cents
-            if (farCount < jumpFrames) return currentFrequency()
-            val target = median(farRun, farCount)
+            farRun[farNext] = cents
+            farNext = (farNext + 1) % jumpFrames
+            if (farCount < jumpFrames) farCount++
+            if (farCount < jumpFrames || spread(farRun) > jumpSpreadCents) return currentFrequency()
+            val target = median(farRun, jumpFrames)
             farCount = 0
+            farNext = 0
             historySize = 0
             historyNext = 0
             accept(target)
@@ -82,9 +95,14 @@ class MedianEmaSmoother(
         }
 
         farCount = 0
+        farNext = 0
         accept(cents)
         val median = median(history, historySize)
-        smoothedCents += alpha * (median - smoothedCents)
+        if (abs(median - smoothedCents) > snapCents) {
+            smoothedCents = median
+        } else {
+            smoothedCents += alpha * (median - smoothedCents)
+        }
         return currentFrequency()
     }
 
@@ -92,6 +110,7 @@ class MedianEmaSmoother(
         historySize = 0
         historyNext = 0
         farCount = 0
+        farNext = 0
         smoothedCents = Double.NaN
         emptyRun = 0
     }
@@ -103,6 +122,16 @@ class MedianEmaSmoother(
         history[historyNext] = cents
         historyNext = (historyNext + 1) % medianWindow
         if (historySize < medianWindow) historySize++
+    }
+
+    private fun spread(values: DoubleArray): Double {
+        var lo = values[0]
+        var hi = values[0]
+        for (v in values) {
+            if (v < lo) lo = v
+            if (v > hi) hi = v
+        }
+        return hi - lo
     }
 
     /** Median of the first [count] values of [values]; the mean of the middle pair for even counts. */

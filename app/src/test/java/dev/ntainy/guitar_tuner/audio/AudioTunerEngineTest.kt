@@ -27,6 +27,7 @@ class AudioTunerEngineTest {
         devices: List<AudioInputDevice>,
         settings: TunerSettings = TunerSettings(),
         factory: RecordingSourceFactory = RecordingSourceFactory(),
+        holdOffFrames: Int = 0,
     ) {
         val monitor = FakeAudioInputMonitor(devices)
         val factory = factory
@@ -47,6 +48,7 @@ class AudioTunerEngineTest {
             tuningFlow = tuning,
             settingsFlow = this.settings,
             analysisDispatcher = StandardTestDispatcher(scope.testScheduler),
+            holdOffFrames = holdOffFrames,
         )
 
         val state: TunerState get() = engine.state.value
@@ -408,5 +410,20 @@ class AudioTunerEngineTest {
 
     private companion object {
         const val A2_HZ = 110.0
+    }
+
+    @Test
+    fun attackTransientIsHeldBackForHoldOffFrames() = runTest {
+        val h = Harness(this, listOf(MIC_DEVICE), holdOffFrames = 3)
+        h.startWithPermission()
+        h.settle()
+        repeat(3) {
+            h.feed()
+            h.settle()
+            assertNull(h.state.pitchHz, "frame ${it + 1} of the attack must not be shown")
+        }
+        h.feed()
+        h.settle()
+        assertEquals(A2_HZ, h.state.pitchHz, "first frame after the hold-off is shown")
     }
 }

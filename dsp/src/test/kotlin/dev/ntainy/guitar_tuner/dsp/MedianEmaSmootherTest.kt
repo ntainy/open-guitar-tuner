@@ -155,3 +155,30 @@ class MedianEmaSmootherTest {
         return sqrt(values.sumOf { (it - mean) * (it - mean) } / values.size)
     }
 }
+
+class MedianEmaSmootherSnapTest {
+    private fun estimate(hz: Double) = PitchEstimate(hz, 0.95, rms = 0.1)
+
+    @Test
+    fun aStringChangeNeverShowsAnIntermediatePitch() {
+        val s = MedianEmaSmoother()
+        repeat(5) { s.push(estimate(196.0)) }
+        // scattered attack transients (as logged on a real pluck), then the settled B string
+        val outputs = listOf(215.4, 227.9, 61.3, 244.4, 245.0, 245.3, 245.1).map { s.push(estimate(it))!! }
+        outputs.forEach { hz ->
+            kotlin.test.assertTrue(hz < 197.0 || hz > 240.0, "intermediate pitch shown: $hz")
+        }
+        kotlin.test.assertEquals(245.1, outputs.last(), 1.0)
+    }
+
+    @Test
+    fun aSmallStepStillEasesIn() {
+        val s = MedianEmaSmoother(alpha = 0.45, snapCents = 25.0)
+        repeat(5) { s.push(estimate(100.0)) }
+        val stepped = NoteMath.frequency(NoteMath.midiFromFrequency(100.0) + 0.10) // +10 cents
+        repeat(3) { s.push(estimate(stepped)) }
+        val out = s.push(estimate(stepped))!!
+        val cents = NoteMath.cents(out, 100.0)
+        kotlin.test.assertTrue(cents > 5.0 && cents < 10.0, "expected easing between 5 and 10 cents, was $cents")
+    }
+}

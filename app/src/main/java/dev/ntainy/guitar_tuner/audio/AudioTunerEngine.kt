@@ -1,10 +1,16 @@
 package dev.ntainy.guitar_tuner.audio
 
 import android.util.Log
+import dev.ntainy.guitar_tuner.BuildConfig
 import dev.ntainy.guitar_tuner.data.model.InputPolicy
 import dev.ntainy.guitar_tuner.data.model.TunerSettings
 import dev.ntainy.guitar_tuner.data.model.Tuning
 import dev.ntainy.guitar_tuner.dsp.FrameAssembler
+import dev.ntainy.guitar_tuner.dsp.Harmonics
+import dev.ntainy.guitar_tuner.dsp.NoiseGate
+import dev.ntainy.guitar_tuner.dsp.TargetMatch
+import dev.ntainy.guitar_tuner.dsp.OctaveGuard
+import dev.ntainy.guitar_tuner.dsp.OnsetDetector
 import dev.ntainy.guitar_tuner.dsp.NoteMath
 import dev.ntainy.guitar_tuner.dsp.PitchDetector
 import dev.ntainy.guitar_tuner.dsp.PitchSmoother
@@ -64,6 +70,11 @@ class AudioTunerEngine(
     settingsFlow: Flow<TunerSettings>,
     analysisDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val framesToMarkTuned: Int = 8,
+    private val noiseGate: NoiseGate = NoiseGate(),
+    private val onsetDetector: OnsetDetector = OnsetDetector(),
+    private val octaveGuard: OctaveGuard = OctaveGuard(),
+    private val holdOffFrames: Int = 7,
+    private val silenceFramesToReset: Int = 12,
 ) : TunerEngine {
 
     init {
@@ -85,6 +96,12 @@ class AudioTunerEngine(
 
     /** String index pinned by the user while AUTO is off; null lets [resolver] choose. Guarded by [dspLock]. */
     private var pinnedString: Int? = null
+
+    /** Analysis frames still to skip after the last attack; the reading is frozen meanwhile. Guarded by [dspLock]. */
+    private var holdRemaining = 0
+
+    /** Consecutive frames without a pitch; the resolver forgets its string after [silenceFramesToReset]. */
+    private var silentFrames = 0
 
     /** Consecutive in-tune frames on [tunedRunTarget]. Guarded by [dspLock]. */
     private var tunedRun = 0
@@ -245,11 +262,54 @@ class AudioTunerEngine(
         val level = rms(chunk)
         synchronized(dspLock) {
             if (!startRequested.value) return
+            noiseGate.observe(level)
+            if (onsetDetector.push(level)) {
+                // A new attack: its first ~300 ms carry a sharp, unstable transient. Freeze the reading until it
+                // has passed, then start the smoother and the octave context fresh from the settled pitch.
+                holdRemaining = holdOffFrames
+                octaveGuard.reset()
+                resolver.reset()
+            }
             var framed = false
             assembler.push(chunk) { frame ->
                 framed = true
-                val estimate = detector.detect(frame)
+                val raw = detector.detect(frame)
+                // Frames that are not clearly above the room's noise floor are treated as silence: a phone mic's
+                // low-frequency hum otherwise reads as a very flat low E once the string has faded.
+                val gated = if (raw != null && noiseGate.passes(raw.rms)) raw else null
+                if (holdRemaining > 0) {
+                    holdRemaining--
+                    if (holdRemaining == 0) {
+                        smoother.reset()
+                        octaveGuard.reset()
+                    }
+                    if (BuildConfig.DEBUG) {
+                        Log.v(FRAMES_TAG, "hold raw=%.2f conf=%.2f rms=%.4f".format(raw?.frequencyHz ?: 0.0, raw?.confidence ?: 0.0, level))
+                    }
+                    _state.update { it.copy(level = level) }
+                    return@push
+                }
+                // A ringing string cannot jump an octave without an attack: fold octave errors onto the note.
+                val estimate = octaveGuard.apply(gated)
                 val pitchHz = smoother.push(estimate)
+                if (pitchHz == null) {
+                    silentFrames++
+                    if (silentFrames == silenceFramesToReset) {
+                        resolver.reset()
+                        octaveGuard.reset()
+                    }
+                } else {
+                    silentFrames = 0
+                }
+                if (BuildConfig.DEBUG) {
+                    Log.v(
+                        FRAMES_TAG,
+                        "raw=%.2f conf=%.2f rms=%.4f gate=%.4f pass=%b guarded=%.2f smooth=%.2f".format(
+                            raw?.frequencyHz ?: 0.0, raw?.confidence ?: 0.0, raw?.rms ?: level, noiseGate.threshold,
+                            gated != null, estimate?.frequencyHz ?: 0.0, pitchHz ?: 0.0,
+                        ),
+                    )
+                }
                 publishFrame(pitchHz, estimate?.confidence ?: 0.0, level)
             }
             if (!framed) _state.update { it.copy(level = level) }
@@ -265,8 +325,15 @@ class AudioTunerEngine(
             _state.update { it.copy(pitchHz = null, confidence = confidence, level = level, centsOff = null, inTune = false) }
             return
         }
-        val target = (pinnedString ?: resolver.resolve(pitchHz, targets)).coerceIn(0, targets.lastIndex)
-        val cents = NoteMath.cents(pitchHz, targets[target])
+        val match = matchTarget(pitchHz, targets)
+        if (match == null) {
+            // Plausibly no string of this tuning (e.g. a hum far below the low E): show it as silence.
+            tunedRun = 0
+            _state.update { it.copy(pitchHz = null, confidence = confidence, level = level, centsOff = null, inTune = false) }
+            return
+        }
+        val target = match.index
+        val cents = match.centsOff
         val inTune = abs(cents) <= settings.value.toleranceCents
         if (inTune && target == tunedRunTarget) {
             tunedRun++
@@ -275,6 +342,12 @@ class AudioTunerEngine(
             tunedRunTarget = target
         }
         val markTuned = tunedRun >= framesToMarkTuned
+        if (BuildConfig.DEBUG) {
+            Log.v(
+                FRAMES_TAG,
+                "target=%d (%.2f Hz) fold=%d cents=%+.1f inTune=%b run=%d".format(target, targets[target], match.fold, cents, inTune, tunedRun),
+            )
+        }
         _state.update {
             it.copy(
                 pitchHz = pitchHz,
@@ -286,6 +359,17 @@ class AudioTunerEngine(
                 tunedStrings = if (markTuned) it.tunedStrings + target else it.tunedStrings,
             )
         }
+    }
+
+    /**
+     * AUTO: the resolver picks the string (overtones folded, implausible pitches rejected). Manual: the pinned string,
+     * still folding overtones so a decaying string keeps reading correctly.
+     */
+    private fun matchTarget(pitchHz: Double, targets: DoubleArray): TargetMatch? {
+        val pinned = pinnedString ?: return resolver.resolveMatch(pitchHz, targets)
+        val index = pinned.coerceIn(0, targets.lastIndex)
+        val fold = Harmonics.bestFold(pitchHz, targets[index])
+        return TargetMatch(index, fold, Harmonics.cents(pitchHz, targets[index], fold))
     }
 
     private fun onTuningChanged(next: Tuning) {
@@ -311,7 +395,12 @@ class AudioTunerEngine(
     private fun resetDsp() {
         assembler.reset()
         smoother.reset()
+        noiseGate.reset()
+        onsetDetector.reset()
+        octaveGuard.reset()
         resolver.reset()
+        holdRemaining = 0
+        silentFrames = 0
         tunedRun = 0
         tunedRunTarget = -1
     }
@@ -328,6 +417,8 @@ class AudioTunerEngine(
 
     companion object {
         const val TAG = "TunerEngine"
+        /** Per-frame verbose log, debug builds only: `adb logcat -s TunerFrames:V`. */
+        const val FRAMES_TAG = "TunerFrames"
 
         private const val CAPTURE_ATTEMPTS = 2
         private const val RETRY_DELAY_MS = 400L

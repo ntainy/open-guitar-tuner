@@ -112,3 +112,78 @@ class HysteresisTargetResolverTest {
         assertFailsWith<IllegalArgumentException> { HysteresisTargetResolver(framesToSwitch = 0) }
     }
 }
+
+class HysteresisTargetResolverHarmonicsTest {
+    private val standard = intArrayOf(40, 45, 50, 55, 59, 64).map { NoteMath.frequency(it) }.toDoubleArray()
+
+    @Test
+    fun octaveOfTheCurrentStringStaysOnItWithFoldedCents() {
+        val r = HysteresisTargetResolver()
+        repeat(3) { r.resolveMatch(196.2, standard) }
+        repeat(6) {
+            val m = r.resolveMatch(392.3, standard)!!
+            kotlin.test.assertEquals(3, m.index)
+            kotlin.test.assertEquals(2, m.fold)
+            kotlin.test.assertEquals(1.3, m.centsOff, 0.3)
+        }
+    }
+
+    @Test
+    fun freshOctaveReadingResolvesToTheFundamentalString() {
+        val r = HysteresisTargetResolver()
+        val m = r.resolveMatch(165.76, standard)!!
+        kotlin.test.assertEquals(0, m.index, "165.8 Hz is the low E an octave up, not a flat D3")
+        kotlin.test.assertEquals(2, m.fold)
+        kotlin.test.assertEquals(10.0, m.centsOff, 1.5)
+    }
+
+    @Test
+    fun aRealStringPlayedAfterItsOvertoneStringSwitches() {
+        val r = HysteresisTargetResolver()
+        repeat(3) { r.resolveMatch(82.41, standard) }
+        val b3 = NoteMath.frequency(59)
+        val indices = (1..4).map { r.resolveMatch(b3, standard)!!.index }
+        kotlin.test.assertEquals(listOf(0, 0, 4, 4), indices, "B3 wins over 'E2 third overtone' after framesToSwitch")
+    }
+
+    @Test
+    fun humFarBelowTheLowestStringIsImplausible() {
+        val r = HysteresisTargetResolver()
+        repeat(3) { r.resolveMatch(82.41, standard) }
+        kotlin.test.assertNull(r.resolveMatch(45.0, standard))
+        kotlin.test.assertNull(r.resolveMatch(54.75, standard))
+        kotlin.test.assertEquals(0, r.resolve(45.0, standard), "resolve keeps the current string")
+        kotlin.test.assertEquals(0, r.resolveMatch(82.6, standard)!!.index, "state survives implausible readings")
+    }
+
+    @Test
+    fun tuningUpTheLowEFromDIsPlausible() {
+        val r = HysteresisTargetResolver()
+        val m = r.resolveMatch(73.3, standard)!!
+        kotlin.test.assertEquals(0, m.index)
+        kotlin.test.assertEquals(1, m.fold)
+        kotlin.test.assertEquals(-203.0, m.centsOff, 2.0)
+    }
+}
+
+class HysteresisTargetResolverFreshAttackTest {
+    private val standard = intArrayOf(40, 45, 50, 55, 59, 64).map { NoteMath.frequency(it) }.toDoubleArray()
+
+    @Test
+    fun afterResetAHighEIsPickedOnTheFirstFrameEvenThoughLowEWasCurrent() {
+        val r = HysteresisTargetResolver()
+        repeat(3) { r.resolveMatch(82.4, standard) }
+        r.reset()
+        val m = r.resolveMatch(329.6 * 1.003, standard)!!
+        kotlin.test.assertEquals(5, m.index)
+        kotlin.test.assertEquals(1, m.fold)
+    }
+
+    @Test
+    fun withoutResetTheFourthOvertoneInterpretationHoldsForThreeFrames() {
+        val r = HysteresisTargetResolver()
+        repeat(3) { r.resolveMatch(82.4, standard) }
+        val seen = (1..4).map { r.resolveMatch(329.6 * 1.003, standard)!!.index }
+        kotlin.test.assertEquals(listOf(0, 0, 5, 5), seen)
+    }
+}
