@@ -2,6 +2,8 @@
 
 package dev.ntainy.guitar_tuner.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.Bluetooth
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Headset
 import androidx.compose.material.icons.outlined.Mic
@@ -40,6 +43,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,13 +52,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -187,8 +194,8 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions, modifier: 
                     onCheckedChange = actions.onShowHzChange,
                 )
                 SwitchRow(
-                    title = "Pitch trace",
-                    subtitle = "A scrolling history under the gauge, so you can watch a pluck settle",
+                    title = "Needle trail",
+                    subtitle = "A fading tail behind the needle, so you can watch a pluck settle",
                     checked = s.showTrace,
                     onCheckedChange = actions.onShowTraceChange,
                 )
@@ -339,11 +346,14 @@ private fun ReferencePitchRow(
                 Icon(Icons.Filled.Add, contentDescription = "Raise reference pitch by 1 Hz")
             }
         }
+        // A plain track: 51 tick marks read as a dotted line, and the stepper already shows the 1 Hz resolution.
+        // The value is rounded as it moves instead, so the thumb still lands on whole hertz.
         Slider(
             value = dragging ?: a4Hz.toFloat(),
             onValueChange = {
-                dragging = it
-                tick(it.roundToInt())
+                val whole = it.roundToInt()
+                dragging = whole.toFloat()
+                tick(whole)
             },
             onValueChangeFinished = {
                 dragging?.let { onChange(it.roundToInt().toDouble()) }
@@ -351,7 +361,7 @@ private fun ReferencePitchRow(
                 haptics.gestureEnd()
             },
             valueRange = min.toFloat()..max.toFloat(),
-            steps = max - min - 1,
+            steps = 0,
             modifier = Modifier
                 .fillMaxWidth()
                 .semantics { contentDescription = "Reference pitch, $shown hertz" },
@@ -600,39 +610,77 @@ private fun InputSection(
 
 /**
  * What someone plugging in an interface for the first time needs to know. Kept as prose rather than a help screen:
- * it is three sentences and this is the page they are already on when it does not work.
+ * it is three sentences and this is the page they are already on when it does not work. Collapsed by default so
+ * the Input section stays a list of choices; the row opens it in place.
  */
 @Composable
-private fun UsbTips(modifier: Modifier = Modifier) {
+private fun UsbTips(modifier: Modifier = Modifier, initiallyExpanded: Boolean = false) {
     val scheme = MaterialTheme.colorScheme
-    Column(
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(
-            text = "Using a USB interface",
-            style = MaterialTheme.typography.labelLarge,
-            color = scheme.onSurface,
-        )
-        Text(
-            text = "Connect the interface before opening the app \u2014 Android hands it over on connection, and a " +
-                "device plugged in later can take a moment to appear. \u201cPrefer USB\u201d picks it automatically " +
-                "and falls back to the microphone the moment it is unplugged, so you can leave it on.",
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-        )
-        Text(
-            text = "If nothing shows up: check the cable carries data and not just power, make sure no other app is " +
-                "holding the interface, and reconnect it. Interfaces with their own amp modelling send that modelled " +
-                "signal, which tunes fine but is not the dry string.",
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-        )
-        Text(
-            text = "USB audio interfaces such as the NUX Mighty Plug Pro appear in the list above when connected.",
-            style = MaterialTheme.typography.bodySmall,
-            color = scheme.onSurfaceVariant,
-        )
+    val haptics = LocalTunerHaptics.current
+    var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
+    val chevronTurn by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "usbTipsChevron",
+    )
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = if (expanded) "Hide the USB tips" else "Show the USB tips",
+                ) {
+                    expanded = !expanded
+                    haptics.toggle(on = expanded)
+                }
+                .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
+                .heightIn(min = 56.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Using a USB interface",
+                style = MaterialTheme.typography.bodyLarge,
+                color = scheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = Icons.Outlined.ExpandMore,
+                contentDescription = null,
+                tint = scheme.onSurfaceVariant,
+                modifier = Modifier.rotate(chevronTurn),
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = "Connect the interface before opening the app \u2014 Android hands it over on connection, " +
+                        "and a device plugged in later can take a moment to appear. \u201cPrefer USB\u201d picks it " +
+                        "automatically and falls back to the microphone the moment it is unplugged, so you can " +
+                        "leave it on.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "If nothing shows up: check the cable carries data and not just power, make sure no other " +
+                        "app is holding the interface, and reconnect it. Interfaces with their own amp modelling " +
+                        "send that modelled signal, which tunes fine but is not the dry string.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "USB audio interfaces such as the NUX Mighty Plug Pro appear in the list above when " +
+                        "connected.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
@@ -692,6 +740,30 @@ private fun SettingsLightPreview() {
             ),
             actions = SettingsActions.None,
         )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun UsbTipsCollapsedPreview() {
+    GuitarTunerTheme {
+        Surface { UsbTips() }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun UsbTipsExpandedPreview() {
+    GuitarTunerTheme {
+        Surface { UsbTips(initiallyExpanded = true) }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun UsbTipsExpandedLightPreview() {
+    GuitarTunerTheme(darkTheme = false) {
+        Surface { UsbTips(initiallyExpanded = true) }
     }
 }
 

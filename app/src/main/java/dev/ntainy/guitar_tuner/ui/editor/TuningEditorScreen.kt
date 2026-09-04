@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,9 +56,9 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.ntainy.guitar_tuner.data.model.MAX_STRING_MIDI
 import dev.ntainy.guitar_tuner.data.model.MIN_STRING_MIDI
-import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
 import dev.ntainy.guitar_tuner.di.AppContainer
 import dev.ntainy.guitar_tuner.dsp.Notation
+import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
 import dev.ntainy.guitar_tuner.ui.theme.GuitarTunerTheme
 import dev.ntainy.guitar_tuner.ui.theme.farOff
 import dev.ntainy.guitar_tuner.ui.tunings.NoteChipRow
@@ -88,13 +92,17 @@ fun TuningEditorScreen(container: AppContainer, tuningId: String?, onDone: () ->
         onNudge = viewModel::nudge,
         onSetNote = viewModel::setNote,
         onShiftAll = viewModel::shiftAll,
+        onStartFrom = viewModel::loadFrom,
         onSave = viewModel::save,
         onClose = onDone,
         modifier = modifier,
     )
 }
 
-/** Stateless body of [TuningEditorScreen]; the only local state is which string's note picker is open. */
+/**
+ * Stateless body of [TuningEditorScreen]; the only local state is which sheet is open: a string's note picker,
+ * or the "Start from" catalogue.
+ */
 @Composable
 fun TuningEditorContent(
     state: TuningEditorUiState,
@@ -102,6 +110,7 @@ fun TuningEditorContent(
     onNudge: (index: Int, delta: Int) -> Unit,
     onSetNote: (index: Int, midi: Int) -> Unit,
     onShiftAll: (delta: Int) -> Unit,
+    onStartFrom: (id: String) -> Unit,
     onSave: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -109,6 +118,7 @@ fun TuningEditorContent(
 ) {
     val haptics = LocalTunerHaptics.current
     var pickerIndex by rememberSaveable { mutableStateOf(initialPickerIndex) }
+    var startFromOpen by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -145,11 +155,11 @@ fun TuningEditorContent(
                 label = { Text("Name") },
                 singleLine = true,
                 enabled = state.isLoaded,
-                isError = state.errors.isNotEmpty(),
-                supportingText = if (state.errors.isEmpty()) null else {
+                isError = state.visibleErrors.isNotEmpty(),
+                supportingText = if (state.visibleErrors.isEmpty()) null else {
                     {
                         Column {
-                            state.errors.forEach { error ->
+                            state.visibleErrors.forEach { error ->
                                 Text(text = error, color = MaterialTheme.colorScheme.farOff)
                             }
                         }
@@ -171,6 +181,21 @@ fun TuningEditorContent(
             Spacer(Modifier.height(6.dp))
             NoteChipRow(labels = state.noteLabels)
             Spacer(Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = { startFromOpen = true },
+                enabled = state.isLoaded && state.templates.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.LibraryMusic,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                )
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                Text("Start from a preset…")
+            }
+            Spacer(Modifier.height(8.dp))
 
             state.notes.forEachIndexed { index, midi ->
                 StringRow(
@@ -211,6 +236,17 @@ fun TuningEditorContent(
                 pickerIndex = null
             },
             onDismiss = { pickerIndex = null },
+        )
+    }
+
+    if (startFromOpen) {
+        StartFromSheet(
+            sections = state.templates,
+            onPick = { id ->
+                onStartFrom(id)
+                startFromOpen = false
+            },
+            onDismiss = { startFromOpen = false },
         )
     }
 }
@@ -261,16 +297,51 @@ private fun StringRow(
 
 // ---- Previews -------------------------------------------------------------------------------------------------
 
+private val previewTemplates = buildTemplates(PreviewData.withCustom, Notation.SHARPS)
+
+/** A fresh tuning: no name yet, the field shows its hint and Save is disabled, but nothing is red. */
 @Preview(showBackground = true, heightDp = 780)
 @Composable
 private fun EditorNewPreview() {
     GuitarTunerTheme {
         TuningEditorContent(
-            state = TuningEditorUiState(name = "New tuning", isNew = true, isLoaded = true),
+            state = TuningEditorUiState(
+                name = "",
+                errors = listOf("Name is empty"),
+                templates = previewTemplates,
+                isNew = true,
+                isLoaded = true,
+            ),
             onNameChange = {},
             onNudge = { _, _ -> },
             onSetNote = { _, _ -> },
             onShiftAll = {},
+            onStartFrom = {},
+            onSave = {},
+            onClose = {},
+        )
+    }
+}
+
+/** The name was typed and cleared again: now the field says so. */
+@Preview(showBackground = true, heightDp = 780)
+@Composable
+private fun EditorNameClearedPreview() {
+    GuitarTunerTheme {
+        TuningEditorContent(
+            state = TuningEditorUiState(
+                name = "",
+                nameTouched = true,
+                errors = listOf("Name is empty"),
+                templates = previewTemplates,
+                isNew = true,
+                isLoaded = true,
+            ),
+            onNameChange = {},
+            onNudge = { _, _ -> },
+            onSetNote = { _, _ -> },
+            onShiftAll = {},
+            onStartFrom = {},
             onSave = {},
             onClose = {},
         )
@@ -284,8 +355,10 @@ private fun EditorEditingWithErrorPreview() {
         TuningEditorContent(
             state = TuningEditorUiState(
                 name = "",
+                nameTouched = true,
                 notes = PreviewData.customOpenC.strings,
                 errors = listOf("Name is empty"),
+                templates = previewTemplates,
                 isNew = false,
                 isLoaded = true,
             ),
@@ -293,6 +366,7 @@ private fun EditorEditingWithErrorPreview() {
             onNudge = { _, _ -> },
             onSetNote = { _, _ -> },
             onShiftAll = {},
+            onStartFrom = {},
             onSave = {},
             onClose = {},
         )
@@ -308,6 +382,7 @@ private fun EditorFlatsLightPreview() {
                 name = "Half step down",
                 notes = PreviewData.eFlat.strings,
                 notation = Notation.FLATS,
+                templates = buildTemplates(PreviewData.withCustom, Notation.FLATS),
                 isNew = false,
                 isLoaded = true,
             ),
@@ -315,6 +390,7 @@ private fun EditorFlatsLightPreview() {
             onNudge = { _, _ -> },
             onSetNote = { _, _ -> },
             onShiftAll = {},
+            onStartFrom = {},
             onSave = {},
             onClose = {},
         )
