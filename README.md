@@ -10,8 +10,9 @@ Material 3, and a small hand-written YIN pitch detector.
 
 ## Status
 
-MVP feature-complete and unit-tested (172 tests across `:dsp` and `:app`); on-device verification with a real guitar
-and the USB interface is the next step. See `docs/PLAN.md` for the roadmap, `docs/ARCHITECTURE.md` for how the
+MVP complete, unit-tested (204 tests across `:dsp` and `:app`) and verified on a Galaxy S23 Ultra with an acoustic
+guitar through the phone microphone. The USB input path is implemented and unit-tested but has not yet been tried
+with a real interface. See `docs/PLAN.md` for the roadmap, `docs/ARCHITECTURE.md` for how the
 pieces fit, `docs/DSP.md` for the pitch detector, `docs/TUNINGS.md` for the preset list, and `CLAUDE.md` for build
 commands and conventions.
 

@@ -14,7 +14,8 @@ export JAVA_HOME="$HOME/Applications/Android Studio.app/Contents/jbr/Contents/Ho
 ./gradlew buildEnvironment | grep kotlin-gradle-plugin         # must resolve to 2.3.21
 adb install -r app/build/outputs/apk/debug/app-debug.apk && adb shell am start -n dev.ntainy.guitar_tuner/.MainActivity
 adb exec-out screencap -p > /tmp/shot.png                      # then Read the PNG
-adb logcat -s TunerEngine AudioInputMonitor
+adb logcat -s TunerEngine AudioInputMonitor                    # device choice, capture start/stop
+adb logcat -v time -s TunerFrames:V > frames.txt               # debug builds: one line per analysis frame
 ```
 
 Toolchain: AGP 9.4.0 (built-in Kotlin, raised to 2.3.21 via the root plugins block), Gradle 9.6, JDK 25 daemon,
@@ -42,7 +43,9 @@ without updating every caller and this file. Tunings always have exactly `STRING
 string first (index 0 = low E in Standard). `TunerState.centsOff` is signed, positive = sharp.
 
 Audio chain: `AudioSource.samples()` (48 kHz mono float chunks) → `FrameAssembler` (4096 window, 2048 hop) →
-`PitchDetector.detect` (YIN) → `PitchSmoother.push` → `TargetResolver.resolve` → `TunerState`.
+`PitchDetector.detect` (YIN) → `NoiseGate` → `OctaveGuard` → `PitchSmoother.push` → `TargetResolver.resolveMatch`
+(overtone folds) → `TunerState`. `OnsetDetector` holds the reading ~300 ms after each attack. `docs/DSP.md` explains
+every stage and what was measured on the phone; change parameters there and in `AppContainer`, not in call sites.
 
 ## Conventions
 

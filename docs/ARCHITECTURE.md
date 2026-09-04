@@ -5,9 +5,10 @@ Everything user-visible is derived from two flows: `TunerEngine.state` (what the
 settings/tunings repositories (what the user chose).
 
 ```
-USB interface ──┐                                                     ┌─► ui/tuner   (gauge, note, headstock, AUTO)
-                ├─ AudioSource.samples() ─► FrameAssembler ─► PitchDetector ─► PitchSmoother ─► TargetResolver ─► TunerState
-Built-in mic ───┘   (AudioRecord, 48 kHz)    (4096 / 2048)     (YIN)            (median+EMA)    (hysteresis)       │
+USB interface ──┐                                                                                      ┌─► ui/tuner
+                ├─ AudioSource ─► FrameAssembler ─► PitchDetector ─► NoiseGate ─► OctaveGuard ─► PitchSmoother ─► TargetResolver ─► TunerState
+Built-in mic ───┘  (AudioRecord)   (4096 / 2048)     (YIN)          OnsetDetector holds ~300 ms   (median+EMA)   (overtone folds,    │
+                                                                    after every attack                            hysteresis)         │
                     AudioInputMonitor picks the device                                                              ├─► ui/tunings, ui/editor
 TuningsRepository  (typed DataStore, tunings.json: custom only; presets from code) ────────────────────────────────┤
 SettingsRepository (typed DataStore, settings.json) ───────────────────────────────────────────────────────────────┴─► ui/settings
@@ -36,7 +37,9 @@ SettingsRepository (typed DataStore, settings.json) ─────────�
 
 - Capture runs on a dedicated thread at `THREAD_PRIORITY_URGENT_AUDIO`; chunks flow through a `DROP_OLDEST`
   channel so a slow consumer never stalls `AudioRecord`.
-- Analysis (assembler → detector → smoother → resolver) runs on `Dispatchers.Default`, about 23 frames/s.
+- Analysis (assembler → detector → noise gate → octave guard → smoother → resolver) runs on `Dispatchers.Default`,
+  about 23 frames/s. An `OnsetDetector` on the capture level freezes the reading for ~300 ms after every attack
+  and resets the octave context and the resolver's string choice. See `docs/DSP.md` for why each stage exists.
 - The engine runs only while the Tune screen is resumed and `RECORD_AUDIO` is granted; device changes restart
   capture through `flatMapLatest`.
 
