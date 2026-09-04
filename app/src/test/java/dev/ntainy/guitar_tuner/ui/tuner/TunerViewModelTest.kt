@@ -256,4 +256,22 @@ class TunerViewModelTest {
         vm.onStringTap(4)
         assertTrue(engine.state.value.autoMode, "tapping the pinned string hands control back to AUTO")
     }
+
+    @Test
+    fun allTunedEventFiresOnlyWhenTheLastMarkIsEarned() = runTest {
+        val all = setOf(0, 1, 2, 3, 4, 5)
+        engine.update { it.copy(tunedStrings = all) }
+        val vm = viewModel()
+        vm.events.test {
+            expectNoEvents() // already all tuned when the screen (re)opens: no toast
+            engine.startOver()
+            expectNoEvents()
+            engine.update { it.copy(tunedStrings = setOf(0, 1, 2, 3, 4)) }
+            expectNoEvents()
+            engine.update { it.copy(tunedStrings = all) }
+            assertEquals(TunerEvent.AllTuned, awaitItem())
+            engine.update { it.copy(pitchHz = 110.0) } // unrelated state change while still all tuned
+            expectNoEvents()
+        }
+    }
 }

@@ -126,9 +126,19 @@ fun TunerScreen(container: AppContainer, onOpenTunings: () -> Unit, modifier: Mo
 
     var showInputSheet by rememberSaveable { mutableStateOf(false) }
 
+    val snackbarHost = remember { SnackbarHostState() }
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                TunerEvent.AllTuned -> snackbarHost.showSnackbar(ALL_SET_MESSAGE, duration = SnackbarDuration.Short)
+            }
+        }
+    }
+
     TunerContent(
         state = state,
         permanentlyDenied = permanentlyDenied,
+        snackbarHost = snackbarHost,
         onOpenTunings = onOpenTunings,
         onSelectString = viewModel::onStringTap,
         onAutoMode = viewModel::setAutoMode,
@@ -172,13 +182,10 @@ fun TunerContent(
     onAllowMic: () -> Unit,
     onOpenAppSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    snackbarHost: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val scheme = MaterialTheme.colorScheme
     val ringColor by animateColorAsState(needleColor(state.centsOff, state.inTune, scheme), label = "noteRing")
-    val snackbarHost = remember { SnackbarHostState() }
-    LaunchedEffect(state.allTuned) {
-        if (state.allTuned) snackbarHost.showSnackbar(ALL_SET_MESSAGE, duration = SnackbarDuration.Short)
-    }
 
     Box(
         modifier = modifier
