@@ -38,7 +38,7 @@ android {
         minSdk = 36
         targetSdk = 37
         versionCode = buildValue("versionCode", "VERSION_CODE", "1").toInt()
-        versionName = buildValue("versionName", "VERSION_NAME", "0.1")
+        versionName = buildValue("versionName", "VERSION_NAME", "0.2-beta.2")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
