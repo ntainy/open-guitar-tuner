@@ -10,6 +10,7 @@ import dev.ntainy.guitar_tuner.audio.TunerEngine
 import dev.ntainy.guitar_tuner.audio.TunerState
 import dev.ntainy.guitar_tuner.data.SettingsRepository
 import dev.ntainy.guitar_tuner.data.TuningsRepository
+import dev.ntainy.guitar_tuner.data.model.PresetIds
 import dev.ntainy.guitar_tuner.data.model.TunerSettings
 import dev.ntainy.guitar_tuner.data.model.Tuning
 import dev.ntainy.guitar_tuner.data.model.TuningGroup
@@ -22,6 +23,16 @@ import dev.ntainy.guitar_tuner.fakes.InMemoryTuningsRepository
 object PreviewData {
     val standard: Tuning = InMemoryTuningsRepository.STANDARD
     val dropD: Tuning = InMemoryTuningsRepository.DROP_D
+
+    /** The mode row above the sections; carries Standard's strings like the real catalog entry does. */
+    val chromatic = Tuning(
+        id = PresetIds.CHROMATIC,
+        name = "Chromatic",
+        subtitle = "Any note, no strings",
+        strings = standard.strings,
+        isPreset = true,
+        group = TuningGroup.STANDARD,
+    )
 
     val dadgad = Tuning(
         id = "preset_dadgad",
@@ -68,7 +79,7 @@ object PreviewData {
         createdAt = 2L,
     )
 
-    val presets: List<Tuning> = listOf(standard, dropD, dadgad, eFlat, openG, nst)
+    val presets: List<Tuning> = listOf(chromatic, standard, dropD, dadgad, eFlat, openG, nst)
     val withCustom: List<Tuning> = listOf(customOpenC, customBaritone) + presets
 
     val builtinMic = AudioInputDevice(id = 1, key = AudioInputDevice.BUILTIN_KEY, name = "Built-in microphone", kind = InputKind.BUILTIN_MIC)

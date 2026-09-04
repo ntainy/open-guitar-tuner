@@ -12,6 +12,8 @@ import dev.ntainy.guitar_tuner.data.model.TuningGroup
 import dev.ntainy.guitar_tuner.dsp.Notation
 import dev.ntainy.guitar_tuner.dsp.NoteMath
 import dev.ntainy.guitar_tuner.fakes.InMemoryTuningsRepository
+import dev.ntainy.guitar_tuner.ui.tunings.TuningSectionUi
+import dev.ntainy.guitar_tuner.ui.tunings.buildSections
 import java.util.UUID
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -29,17 +31,35 @@ import kotlinx.coroutines.launch
 /** Labels for the six rows of the editor, index 0 = low string. */
 val STRING_LABELS: List<String> = listOf("6th (low E)", "5th", "4th", "3rd", "2nd", "1st (high E)")
 
-/** Everything the editor draws. [notes] and [noteLabels] are low string first. */
+/**
+ * The message [Tuning.validationErrors] gives a blank name, read off the model so the editor cannot drift from it.
+ */
+private val NAME_EMPTY_ERROR: String =
+    Tuning(id = "", name = "", strings = InMemoryTuningsRepository.STANDARD.strings).validationErrors().single()
+
+/**
+ * Everything the editor draws. [notes] and [noteLabels] are low string first. [templates] is what the
+ * "Start from a preset" sheet lists: the presets in their Tunings-list groups plus the user's own tunings.
+ */
 data class TuningEditorUiState(
     val name: String = "",
+    /** True once the user has typed in the name field; a blank name is only reported after that. */
+    val nameTouched: Boolean = false,
     val notes: List<Int> = InMemoryTuningsRepository.STANDARD.strings,
     val notation: Notation = Notation.SHARPS,
     val errors: List<String> = emptyList(),
+    val templates: List<TuningSectionUi> = emptyList(),
     val isNew: Boolean = true,
     val isLoaded: Boolean = false,
 ) {
     val noteLabels: List<String> get() = notes.map { NoteMath.name(it, notation) }
     val canSave: Boolean get() = isLoaded && errors.isEmpty()
+
+    /**
+     * The problems worth showing under the name field. A fresh tuning starts with no name, and "Name is empty"
+     * before the user has typed anything is nagging, not feedback — so that one waits for [nameTouched].
+     */
+    val visibleErrors: List<String> get() = if (nameTouched) errors else errors - NAME_EMPTY_ERROR
     val canShiftDown: Boolean get() = notes.all { it - 1 >= MIN_STRING_MIDI }
     val canShiftUp: Boolean get() = notes.all { it + 1 <= MAX_STRING_MIDI }
 }
@@ -50,7 +70,8 @@ sealed interface TuningEditorEvent {
 
 /**
  * Edits the custom tuning [tuningId], or starts a new one when the id is null or names a preset.
- * A new tuning is prefilled from Standard (or from the named preset) and called "New tuning".
+ * A new tuning is prefilled from Standard (or from the named preset) and starts with no name, so it cannot be
+ * saved by accident under a placeholder.
  */
 class TuningEditorViewModel(
     private val tunings: TuningsRepository,
@@ -62,6 +83,7 @@ class TuningEditorViewModel(
         val name: String,
         val notes: List<Int>,
         val createdAt: Long,
+        val nameTouched: Boolean = false,
     ) {
         val isNew: Boolean get() = id == null
     }
@@ -72,12 +94,14 @@ class TuningEditorViewModel(
     val events: Flow<TuningEditorEvent> = eventChannel.receiveAsFlow()
 
     val uiState: StateFlow<TuningEditorUiState> =
-        combine(draft.filterNotNull(), settings.settings) { d, prefs ->
+        combine(draft.filterNotNull(), settings.settings, tunings.tunings) { d, prefs, all ->
             TuningEditorUiState(
                 name = d.name,
+                nameTouched = d.nameTouched,
                 notes = d.notes,
                 notation = prefs.notation,
                 errors = d.toTuning(prefs.notation).validationErrors(),
+                templates = buildTemplates(all, prefs.notation),
                 isNew = d.isNew,
                 isLoaded = true,
             )
@@ -95,10 +119,10 @@ class TuningEditorViewModel(
         val template = existing
             ?: tunings.tuning(PresetIds.STANDARD).first()
             ?: InMemoryTuningsRepository.STANDARD
-        return Draft(id = null, name = NEW_NAME, notes = template.strings, createdAt = 0L)
+        return Draft(id = null, name = "", notes = template.strings, createdAt = 0L)
     }
 
-    fun setName(name: String) = draft.update { it?.copy(name = name) }
+    fun setName(name: String) = draft.update { it?.copy(name = name, nameTouched = true) }
 
     fun setNote(index: Int, midi: Int) = draft.update { d ->
         d?.copy(notes = d.notes.mapIndexed { i, n -> if (i == index) midi.coerceIn(MIN_STRING_MIDI, MAX_STRING_MIDI) else n })
@@ -113,6 +137,18 @@ class TuningEditorViewModel(
     fun shiftAll(delta: Int) = draft.update { d ->
         if (d == null || d.notes.any { it + delta !in MIN_STRING_MIDI..MAX_STRING_MIDI }) d
         else d.copy(notes = d.notes.map { it + delta })
+    }
+
+    /**
+     * Replaces the six notes with those of the tuning [id], preset or custom; the name and identity stay as they
+     * are. Unknown ids and the chromatic entry (which has no strings of its own) are ignored.
+     */
+    fun loadFrom(id: String) {
+        viewModelScope.launch {
+            val template = tunings.tuning(id).first() ?: return@launch
+            if (template.isChromatic) return@launch
+            draft.update { it?.copy(notes = template.strings) }
+        }
     }
 
     fun save() {
@@ -143,7 +179,13 @@ class TuningEditorViewModel(
     )
 
     private companion object {
-        const val NEW_NAME = "New tuning"
         const val STOP_TIMEOUT_MS = 5_000L
     }
 }
+
+/**
+ * The "Start from" catalogue: the same grouping as the Tunings list, nothing selected, empty groups dropped
+ * (an empty "My tunings" has nothing to start from). The chromatic entry is already left out by [buildSections].
+ */
+internal fun buildTemplates(all: List<Tuning>, notation: Notation): List<TuningSectionUi> =
+    buildSections(all, activeId = "", notation = notation).filter { it.rows.isNotEmpty() }

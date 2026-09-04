@@ -4,12 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.ntainy.guitar_tuner.data.SettingsRepository
 import dev.ntainy.guitar_tuner.data.TuningsRepository
-import dev.ntainy.guitar_tuner.data.model.HeadstockLayout
 import dev.ntainy.guitar_tuner.data.model.PresetIds
 import dev.ntainy.guitar_tuner.data.model.Tuning
 import dev.ntainy.guitar_tuner.data.model.TuningGroup
 import dev.ntainy.guitar_tuner.dsp.Notation
 import dev.ntainy.guitar_tuner.dsp.NoteMath
+import kotlin.math.abs
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -40,9 +40,13 @@ data class TuningSectionUi(
     val label: String get() = group.label
 }
 
+/**
+ * The tunings list. [chromatic] is the mode row that sits above every section header — it is not a tuning,
+ * so it never appears inside [sections].
+ */
 data class TuningsUiState(
+    val chromatic: TuningRowUi? = null,
     val sections: List<TuningSectionUi> = emptyList(),
-    val headstockLayout: HeadstockLayout = HeadstockLayout.THREE_PLUS_THREE,
 ) {
     /** False until both repositories have emitted; afterwards "My tunings" is always the first section. */
     val isLoaded: Boolean get() = sections.isNotEmpty()
@@ -66,10 +70,7 @@ class TuningsViewModel(
 
     val uiState: StateFlow<TuningsUiState> =
         combine(tunings.tunings, settings.settings) { all, prefs ->
-            TuningsUiState(
-                sections = buildSections(all, prefs.activeTuningId, prefs.notation),
-                headstockLayout = prefs.headstockLayout,
-            )
+            buildTuningsState(all, prefs.activeTuningId, prefs.notation)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), TuningsUiState())
 
     fun select(id: String) {
@@ -102,33 +103,58 @@ class TuningsViewModel(
         }
     }
 
-    fun setHeadstockLayout(layout: HeadstockLayout) {
-        viewModelScope.launch { settings.update { it.copy(headstockLayout = layout) } }
-    }
-
     private companion object {
         const val STOP_TIMEOUT_MS = 5_000L
     }
 }
 
-/** Groups tunings in [TuningGroup] order; "My tunings" always comes first, other groups only when non-empty. */
+/** Standard tuning, low string first (E2 A2 D3 G3 B3 E4): what a custom tuning's subtitle is measured against. */
+private val STANDARD_STRINGS: List<Int> = listOf(40, 45, 50, 55, 59, 64)
+
+/** Guitar string numbers by list index: index 0 (the low string) is the 6th. */
+private val STRING_ORDINALS: List<String> = listOf("6th", "5th", "4th", "3rd", "2nd", "1st")
+
+/** The whole list state: the chromatic mode row (when the catalog has one) plus the grouped tunings. */
+internal fun buildTuningsState(all: List<Tuning>, activeId: String, notation: Notation): TuningsUiState =
+    TuningsUiState(
+        chromatic = all.firstOrNull { it.isChromatic }?.toRow(activeId, notation),
+        sections = buildSections(all, activeId, notation),
+    )
+
+/**
+ * Groups tunings in [TuningGroup] order; "My tunings" always comes first, other groups only when non-empty.
+ * The chromatic entry is a mode rather than a tuning and is left out — see [TuningsUiState.chromatic].
+ */
 internal fun buildSections(all: List<Tuning>, activeId: String, notation: Notation): List<TuningSectionUi> {
-    val byGroup = all.groupBy { if (it.isPreset) it.group else TuningGroup.MINE }
+    val byGroup = all.filterNot { it.isChromatic }.groupBy { if (it.isPreset) it.group else TuningGroup.MINE }
     return TuningGroup.entries.mapNotNull { group ->
         val rows = byGroup[group].orEmpty().map { it.toRow(activeId, notation) }
         if (group == TuningGroup.MINE || rows.isNotEmpty()) TuningSectionUi(group, rows) else null
     }
 }
 
-private fun Tuning.toRow(activeId: String, notation: Notation): TuningRowUi {
-    val letters = strings.joinToString(" ") { NoteMath.letter(it, notation) }
-    return TuningRowUi(
-        id = id,
-        name = name,
-        subtitle = if (isPreset) subtitle.ifBlank { letters } else letters,
-        noteLabels = if (isChromatic) emptyList() else strings.map { NoteMath.name(it, notation) },
-        isSelected = id == activeId,
-        isCustom = !isPreset,
-        isChromatic = isChromatic,
-    )
-}
+/**
+ * How a custom tuning differs from Standard, per string, as a compact line: "6th −2 · 3rd −1". Empty when it
+ * is Standard. The chips already spell the notes, so the subtitle says what was changed instead of repeating them.
+ */
+internal fun distanceFromStandard(strings: List<Int>): String =
+    strings.zip(STANDARD_STRINGS)
+        .mapIndexedNotNull { index, (midi, standard) ->
+            val delta = midi - standard
+            if (delta == 0) null else "${STRING_ORDINALS[index]} ${if (delta < 0) "−" else "+"}${abs(delta)}"
+        }
+        .joinToString(" · ")
+
+private fun Tuning.toRow(activeId: String, notation: Notation): TuningRowUi = TuningRowUi(
+    id = id,
+    name = name,
+    subtitle = when {
+        isChromatic -> subtitle
+        isPreset -> subtitle.ifBlank { strings.joinToString(" ") { NoteMath.letter(it, notation) } }
+        else -> distanceFromStandard(strings)
+    },
+    noteLabels = if (isChromatic) emptyList() else strings.map { NoteMath.name(it, notation) },
+    isSelected = id == activeId,
+    isCustom = !isPreset,
+    isChromatic = isChromatic,
+)

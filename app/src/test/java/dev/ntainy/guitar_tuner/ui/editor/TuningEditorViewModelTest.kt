@@ -28,6 +28,14 @@ class TuningEditorViewModelTest {
 
     private val standard = InMemoryTuningsRepository.STANDARD
     private val dropD = InMemoryTuningsRepository.DROP_D
+    private val chromatic = Tuning(
+        id = PresetIds.CHROMATIC,
+        name = "Chromatic",
+        subtitle = "Any note, no strings",
+        strings = standard.strings,
+        isPreset = true,
+        group = TuningGroup.STANDARD,
+    )
     private val mine = Tuning(
         id = "custom_1",
         name = "Mine",
@@ -52,16 +60,18 @@ class TuningEditorViewModelTest {
     }
 
     @Test
-    fun newTuningStartsFromStandard() = runTest {
+    fun newTuningStartsFromStandardWithNoName() = runTest {
         val (vm, _) = viewModel(tuningId = null)
         vm.uiState.test {
             val state = awaitLoaded()
             assertTrue(state.isNew)
-            assertEquals("New tuning", state.name)
+            assertEquals("", state.name)
+            assertFalse(state.nameTouched)
             assertEquals(standard.strings, state.notes)
             assertEquals(listOf("E2", "A2", "D3", "G3", "B3", "E4"), state.noteLabels)
-            assertTrue(state.errors.isEmpty())
-            assertTrue(state.canSave)
+            assertEquals(listOf("Name is empty"), state.errors)
+            assertTrue(state.visibleErrors.isEmpty(), "a blank name is not reported before it was edited")
+            assertFalse(state.canSave)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -72,8 +82,29 @@ class TuningEditorViewModelTest {
         vm.uiState.test {
             val state = awaitLoaded()
             assertTrue(state.isNew)
-            assertEquals("New tuning", state.name)
+            assertEquals("", state.name)
             assertEquals(dropD.strings, state.notes)
+            assertFalse(state.canSave)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun blankNameErrorAppearsOnlyAfterTheNameWasTypedAndClearedAgain() = runTest {
+        val (vm, _) = viewModel(tuningId = null)
+        vm.uiState.test {
+            assertTrue(awaitLoaded().visibleErrors.isEmpty())
+
+            vm.setName("D")
+            val typed = awaitItem()
+            assertTrue(typed.nameTouched)
+            assertTrue(typed.errors.isEmpty())
+            assertTrue(typed.canSave)
+
+            vm.setName("")
+            val cleared = awaitItem()
+            assertEquals(listOf("Name is empty"), cleared.visibleErrors)
+            assertFalse(cleared.canSave)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -152,6 +183,7 @@ class TuningEditorViewModelTest {
             vm.setName("   ")
             val state = awaitItem()
             assertEquals(listOf("Name is empty"), state.errors)
+            assertEquals(listOf("Name is empty"), state.visibleErrors)
             assertFalse(state.canSave)
 
             vm.save()
@@ -163,6 +195,20 @@ class TuningEditorViewModelTest {
             assertTrue(fixed.canSave)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun saveWithoutANameStoresNothing() = runTest {
+        val (vm, tuningsRepo) = viewModel(tuningId = null, tunings = listOf(standard))
+        vm.uiState.test {
+            awaitLoaded()
+            cancelAndIgnoreRemainingEvents()
+        }
+        vm.events.test {
+            vm.save()
+            expectNoEvents()
+        }
+        assertTrue(tuningsRepo.tunings.first().none { !it.isPreset })
     }
 
     @Test
@@ -216,6 +262,7 @@ class TuningEditorViewModelTest {
             val state = awaitLoaded()
             assertFalse(state.isNew)
             assertEquals("Mine", state.name)
+            assertFalse(state.nameTouched)
             assertEquals(mine.strings, state.notes)
             assertTrue(state.canSave)
 
@@ -236,6 +283,78 @@ class TuningEditorViewModelTest {
         assertEquals(mine.createdAt, stored.createdAt)
         assertEquals(TuningGroup.MINE, stored.group)
         assertEquals(1, tuningsRepo.tunings.first().count { !it.isPreset })
+    }
+
+    @Test
+    fun clearingAnExistingNameReportsItAtOnce() = runTest {
+        val (vm, _) = viewModel(tuningId = mine.id)
+        vm.uiState.test {
+            awaitLoaded()
+            vm.setName("")
+            val state = awaitItem()
+            assertEquals(listOf("Name is empty"), state.visibleErrors)
+            assertFalse(state.canSave)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun templatesGroupPresetsLikeTheTuningsListPlusMineAndSkipChromatic() = runTest {
+        val (vm, _) = viewModel(tuningId = null, tunings = listOf(chromatic, standard, dropD, mine))
+        vm.uiState.test {
+            val templates = awaitLoaded().templates
+            assertEquals(listOf(TuningGroup.MINE, TuningGroup.STANDARD, TuningGroup.POWER), templates.map { it.group })
+            assertEquals(listOf(mine.id), templates[0].rows.map { it.id })
+            assertEquals(listOf(PresetIds.STANDARD), templates[1].rows.map { it.id })
+            assertEquals(listOf(dropD.id), templates[2].rows.map { it.id })
+            assertTrue(templates.flatMap { it.rows }.none { it.isSelected || it.isChromatic })
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun templatesDropAnEmptyMyTuningsGroup() = runTest {
+        val (vm, _) = viewModel(tuningId = null, tunings = listOf(standard, dropD))
+        vm.uiState.test {
+            assertEquals(listOf(TuningGroup.STANDARD, TuningGroup.POWER), awaitLoaded().templates.map { it.group })
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun loadFromReplacesTheNotesAndLeavesTheNameAlone() = runTest {
+        val (vm, _) = viewModel(tuningId = null)
+        vm.uiState.test {
+            awaitLoaded()
+            vm.setName("My drop")
+            awaitItem()
+
+            vm.loadFrom(dropD.id)
+            val fromPreset = awaitItem()
+            assertEquals(dropD.strings, fromPreset.notes)
+            assertEquals("My drop", fromPreset.name)
+            assertTrue(fromPreset.canSave)
+
+            vm.loadFrom(mine.id)
+            assertEquals(mine.strings, awaitItem().notes)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun loadFromIgnoresUnknownIdsAndTheChromaticEntry() = runTest {
+        val (vm, _) = viewModel(tuningId = null, tunings = listOf(chromatic, standard, dropD))
+        vm.uiState.test {
+            awaitLoaded()
+            vm.loadFrom(dropD.id)
+            assertEquals(dropD.strings, awaitItem().notes)
+
+            vm.loadFrom("custom_missing")
+            expectNoEvents()
+            vm.loadFrom(PresetIds.CHROMATIC)
+            expectNoEvents()
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
