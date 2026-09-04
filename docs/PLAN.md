@@ -1,4 +1,4 @@
-# GuitarTuner MVP — implementation plan (rev 2)
+# OpenGuitarTuner MVP — implementation plan (rev 2)
 
 ## Context
 
@@ -10,7 +10,7 @@ The repo is an Android Studio 2026.1 "No Activity" scaffold with one commit: AGP
 
 - Guitar, 6 strings only. Two headstock display modes: **3+3** and **6-in-line**, using your artwork.
 - Own visual identity, not a GuitarTuna copy. Cents gauge first, scrolling trace later.
-- Name stays "GuitarTuner", package `dev.ntainy.guitar_tuner`, bottom navigation bar.
+- Display name "OpenGuitarTuner" (was "GuitarTuner"), package `dev.ntainy.guitar_tuner` unchanged, bottom navigation bar.
 - Repo is already a git repo; commit at each milestone; free to install SDK components.
 - Implementation fans out to subagents (waves below).
 

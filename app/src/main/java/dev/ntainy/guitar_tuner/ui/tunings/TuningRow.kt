@@ -81,7 +81,7 @@ fun TuningRow(
                     maxLines = 1,
                 )
             }
-            NoteChipRow(labels = row.noteLabels)
+            if (!row.isChromatic) NoteChipRow(labels = row.noteLabels)
         }
         if (row.isSelected) {
             Icon(

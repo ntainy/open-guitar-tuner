@@ -21,8 +21,10 @@ import dev.ntainy.guitar_tuner.audio.TunerState
 import dev.ntainy.guitar_tuner.data.SettingsRepository
 import dev.ntainy.guitar_tuner.data.TuningsRepository
 import dev.ntainy.guitar_tuner.data.model.HeadstockLayout
+import dev.ntainy.guitar_tuner.data.model.PresetIds
 import dev.ntainy.guitar_tuner.data.model.TunerSettings
 import dev.ntainy.guitar_tuner.data.model.Tuning
+import dev.ntainy.guitar_tuner.data.presets.PresetTunings
 import dev.ntainy.guitar_tuner.di.AppContainer
 import dev.ntainy.guitar_tuner.dsp.Notation
 import dev.ntainy.guitar_tuner.fakes.FakeTunerEngine
@@ -94,11 +96,17 @@ private val LISTENING = TunerState(
 )
 
 @Composable
-private fun PreviewScreen(state: TunerUiState, dark: Boolean = true, permanentlyDenied: Boolean = false) {
+private fun PreviewScreen(
+    state: TunerUiState,
+    dark: Boolean = true,
+    permanentlyDenied: Boolean = false,
+    trace: List<TracePoint> = emptyList(),
+) {
     GuitarTunerTheme(darkTheme = dark) {
         TunerContent(
             state = state,
             permanentlyDenied = permanentlyDenied,
+            trace = trace,
             onOpenTunings = {},
             onSelectString = {},
             onAutoMode = {},
@@ -112,6 +120,30 @@ private fun PreviewScreen(state: TunerUiState, dark: Boolean = true, permanently
 
 private const val PHONE_WIDTH = 411
 private const val PHONE_HEIGHT = 780
+private const val LANDSCAPE_WIDTH = 892
+private const val LANDSCAPE_HEIGHT = 411
+
+/**
+ * A plausible six seconds: a pluck that arrives sharp, is turned down past the target, and settles inside the
+ * band, with a silent stretch before the next attack. Enough shape to judge the drawing by.
+ */
+private fun previewTrace(): List<TracePoint> {
+    val step = 40L
+    val count = (TRACE_WINDOW_MS / step).toInt()
+    return List(count) { i ->
+        val t = i * step
+        val cents = when {
+            i < count / 8 -> null
+            else -> {
+                val progress = (i - count / 8).toFloat() / (count - count / 8)
+                val settle = 34f * kotlin.math.exp(-3.2f * progress)
+                val wobble = kotlin.math.sin(progress * 26f).toFloat() * 3.5f * (1f - progress)
+                (settle * kotlin.math.cos(progress * 5.5f).toFloat() + wobble)
+            }
+        }
+        TracePoint(atMs = t, cents = cents)
+    }
+}
 
 @Preview(name = "Idle, no signal", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
 @Composable
@@ -299,3 +331,47 @@ private fun NoteGlyphPreview() {
         }
     }
 }
+
+@Preview(name = "Pitch trace on", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Composable
+private fun TracePreview() {
+    val state = LISTENING.copy(pitchHz = 110.4, confidence = 0.9, level = 0.4, targetIndex = 1, centsOff = 2.1, inTune = true)
+    PreviewScreen(previewContainer(state).uiState(), trace = previewTrace())
+}
+
+@Preview(name = "Landscape", showBackground = true, widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT)
+@Composable
+private fun LandscapePreview() {
+    val state = LISTENING.copy(pitchHz = 146.9, confidence = 0.9, level = 0.4, targetIndex = 2, centsOff = -7.0)
+    PreviewScreen(previewContainer(state).uiState(), trace = previewTrace())
+}
+
+@Preview(name = "Landscape, 6-in-line, light", showBackground = true, widthDp = LANDSCAPE_WIDTH, heightDp = LANDSCAPE_HEIGHT)
+@Composable
+private fun LandscapeLightPreview() {
+    val state = LISTENING.copy(pitchHz = 329.9, confidence = 0.9, level = 0.4, targetIndex = 5, centsOff = 1.0, inTune = true)
+    val container = previewContainer(state, settings = TunerSettings(headstockLayout = HeadstockLayout.SIX_IN_LINE))
+    PreviewScreen(container.uiState(), dark = false, trace = previewTrace())
+}
+
+@Preview(name = "Chromatic, C4", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Composable
+private fun ChromaticPreview() {
+    val state = LISTENING.copy(
+        pitchHz = 261.9,
+        confidence = 0.9,
+        level = 0.4,
+        chromaticMidi = 60,
+        centsOff = 1.8,
+        inTune = true,
+    )
+    PreviewScreen(previewContainer(state, tuning = CHROMATIC_TUNING).uiState())
+}
+
+@Preview(name = "Chromatic, listening", showBackground = true, widthDp = PHONE_WIDTH, heightDp = PHONE_HEIGHT)
+@Composable
+private fun ChromaticIdlePreview() {
+    PreviewScreen(previewContainer(LISTENING, tuning = CHROMATIC_TUNING).uiState())
+}
+
+private val CHROMATIC_TUNING: Tuning = checkNotNull(PresetTunings.byId(PresetIds.CHROMATIC))

@@ -6,6 +6,8 @@ import dev.ntainy.guitar_tuner.audio.TunerState
 import dev.ntainy.guitar_tuner.data.model.HeadstockLayout
 import dev.ntainy.guitar_tuner.data.model.TunerSettings
 import dev.ntainy.guitar_tuner.data.model.Tuning
+import dev.ntainy.guitar_tuner.data.model.PresetIds
+import dev.ntainy.guitar_tuner.data.presets.PresetTunings
 import dev.ntainy.guitar_tuner.dsp.Notation
 import dev.ntainy.guitar_tuner.fakes.InMemoryTuningsRepository
 import kotlin.test.Test
@@ -194,5 +196,43 @@ class TunerUiStateTest {
         assertEquals("String 1, E4, tuned", state.strings[5].accessibilityLabel)
         assertEquals(6, state.strings[0].number)
         assertEquals(1, state.strings[5].number)
+    }
+
+    @Test
+    fun chromaticModeDropsTheStringsAndNamesTheNoteItHears() {
+        val chromatic = checkNotNull(PresetTunings.byId(PresetIds.CHROMATIC))
+        val state = derive(
+            engine = listening.copy(pitchHz = 261.63, chromaticMidi = 60, centsOff = 0.4, inTune = true),
+            tuning = chromatic,
+        )
+
+        assertTrue(state.chromatic)
+        assertEquals(60, state.chromaticMidi)
+        assertTrue(state.strings.isEmpty(), "there are no strings to draw in chromatic mode")
+        assertEquals("C4", state.targetLabel)
+        assertEquals("C", state.targetLetter)
+        assertEquals("4", state.targetOctave)
+        assertFalse(state.anyTuned)
+        assertFalse(state.allTuned, "an empty tuning must not read as fully tuned")
+    }
+
+    @Test
+    fun chromaticNoteNamesFollowTheNotationSetting() {
+        val chromatic = checkNotNull(PresetTunings.byId(PresetIds.CHROMATIC))
+        val sharp = listening.copy(pitchHz = 370.0, chromaticMidi = 66, centsOff = 0.0)
+        assertEquals("F♯4", derive(engine = sharp, tuning = chromatic).targetLabel)
+        assertEquals(
+            "G♭4",
+            derive(engine = sharp, settings = TunerSettings(notation = Notation.FLATS), tuning = chromatic).targetLabel,
+        )
+    }
+
+    @Test
+    fun aStringTuningIsNotChromatic() {
+        val state = derive(engine = listening.copy(pitchHz = 110.0, targetIndex = 1, centsOff = 0.0))
+        assertFalse(state.chromatic)
+        assertNull(state.chromaticMidi)
+        assertEquals(6, state.strings.size)
+        assertEquals("A2", state.targetLabel)
     }
 }

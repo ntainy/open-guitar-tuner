@@ -1,8 +1,12 @@
 package dev.ntainy.guitar_tuner.audio
 
 import dev.ntainy.guitar_tuner.data.model.InputPolicy
+import dev.ntainy.guitar_tuner.data.model.PresetIds
+import dev.ntainy.guitar_tuner.data.model.Tuning
 import dev.ntainy.guitar_tuner.data.model.TunerSettings
+import dev.ntainy.guitar_tuner.data.presets.PresetTunings
 import dev.ntainy.guitar_tuner.fakes.InMemoryTuningsRepository
+import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,6 +32,7 @@ class AudioTunerEngineTest {
         settings: TunerSettings = TunerSettings(),
         factory: RecordingSourceFactory = RecordingSourceFactory(),
         holdOffFrames: Int = 0,
+        activeTuning: Tuning = InMemoryTuningsRepository.STANDARD,
     ) {
         val monitor = FakeAudioInputMonitor(devices)
         val factory = factory
@@ -36,7 +41,7 @@ class AudioTunerEngineTest {
         val resolver = NearestStringResolver()
         val assembler = PassThroughAssembler()
         val settings = MutableStateFlow(settings)
-        val tuning = MutableStateFlow(InMemoryTuningsRepository.STANDARD)
+        val tuning = MutableStateFlow(activeTuning)
         val engine = AudioTunerEngine(
             scope = scope.backgroundScope,
             inputMonitor = monitor,
@@ -425,5 +430,55 @@ class AudioTunerEngineTest {
         h.feed()
         h.settle()
         assertEquals(A2_HZ, h.state.pitchHz, "first frame after the hold-off is shown")
+    }
+
+    @Test
+    fun chromaticModeReportsTheNearestNoteInsteadOfAString() = runTest {
+        val chromatic = checkNotNull(PresetTunings.byId(PresetIds.CHROMATIC))
+        val h = Harness(this, listOf(MIC_DEVICE), activeTuning = chromatic)
+        h.startWithPermission()
+        h.settle()
+
+        // C4 is not a string of any guitar tuning; in chromatic mode it must still be named.
+        h.detector.queue.addLast(261.63)
+        h.feed()
+        h.settle()
+
+        assertEquals(60, h.state.chromaticMidi, "C4")
+        assertNull(h.state.targetIndex, "chromatic mode measures against a note, not a string")
+        assertEquals(0.0, checkNotNull(h.state.centsOff), 1.0)
+        assertTrue(h.state.inTune)
+        assertTrue(h.state.tunedStrings.isEmpty(), "a chromatic reading is a measurement, not a task")
+    }
+
+    @Test
+    fun chromaticModeMeasuresCentsAgainstTheNearestNote() = runTest {
+        val chromatic = checkNotNull(PresetTunings.byId(PresetIds.CHROMATIC))
+        val h = Harness(this, listOf(MIC_DEVICE), activeTuning = chromatic)
+        h.startWithPermission()
+        h.settle()
+
+        // 20 cents sharp of A4.
+        h.detector.queue.addLast(440.0 * 2.0.pow(20.0 / 1200.0))
+        h.feed()
+        h.settle()
+
+        assertEquals(69, h.state.chromaticMidi, "A4")
+        assertEquals(20.0, checkNotNull(h.state.centsOff), 0.5)
+        assertFalse(h.state.inTune, "20 cents is outside the default 5 cent tolerance")
+    }
+
+    @Test
+    fun aStringTuningStillResolvesStringsAndLeavesChromaticEmpty() = runTest {
+        val h = Harness(this, listOf(MIC_DEVICE))
+        h.startWithPermission()
+        h.settle()
+
+        h.detector.queue.addLast(A2_HZ)
+        h.feed()
+        h.settle()
+
+        assertEquals(1, h.state.targetIndex, "A2 is the fifth string")
+        assertNull(h.state.chromaticMidi, "chromaticMidi is only set in chromatic mode")
     }
 }

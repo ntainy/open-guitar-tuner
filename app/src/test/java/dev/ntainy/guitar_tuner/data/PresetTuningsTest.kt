@@ -15,14 +15,14 @@ import kotlin.test.assertTrue
 
 class PresetTuningsTest {
 
-    // The catalog in docs/PLAN.md lists 1 + 7 + 6 + 6 + 3 presets.
+    // The catalog in docs/PLAN.md lists 1 + 7 + 6 + 6 + 3 presets, plus the chromatic entry alongside Standard.
     @Test
     fun `catalog has every preset from the plan`() {
-        assertEquals(23, PresetTunings.all.size)
+        assertEquals(24, PresetTunings.all.size)
         val perGroup = PresetTunings.all.groupingBy { it.group }.eachCount()
         assertEquals(
             mapOf(
-                TuningGroup.STANDARD to 1,
+                TuningGroup.STANDARD to 2,
                 TuningGroup.POWER to 7,
                 TuningGroup.TRANSPOSED to 6,
                 TuningGroup.OPEN to 6,
@@ -43,9 +43,17 @@ class PresetTuningsTest {
     @Test
     fun `every id carries the preset prefix and Standard has the well-known id`() {
         PresetTunings.all.forEach { assertTrue(it.id.startsWith(PresetIds.PREFIX), "id ${it.id}") }
-        assertEquals(PresetIds.STANDARD, PresetTunings.all.first().id)
-        assertEquals("Standard", PresetTunings.all.first().name)
-        assertEquals(listOf(40, 45, 50, 55, 59, 64), PresetTunings.all.first().strings)
+        val standard = assertNotNull(PresetTunings.byId(PresetIds.STANDARD))
+        assertEquals("Standard", standard.name)
+        assertEquals(listOf(40, 45, 50, 55, 59, 64), standard.strings)
+    }
+
+    @Test
+    fun `chromatic leads the list and is the only chromatic entry`() {
+        val chromatic = PresetTunings.all.first()
+        assertEquals(PresetIds.CHROMATIC, chromatic.id)
+        assertTrue(chromatic.isChromatic)
+        assertEquals(1, PresetTunings.all.count { it.isChromatic })
     }
 
     @Test
@@ -84,7 +92,7 @@ class PresetTuningsTest {
 
     @Test
     fun `byId finds presets and nothing else`() {
-        assertEquals(PresetTunings.all.first(), PresetTunings.byId(PresetIds.STANDARD))
+        assertEquals("Standard", PresetTunings.byId(PresetIds.STANDARD)?.name)
         PresetTunings.all.forEach { assertEquals(it, PresetTunings.byId(it.id)) }
         assertNull(PresetTunings.byId("custom_123"))
         assertNull(PresetTunings.byId(""))

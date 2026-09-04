@@ -52,6 +52,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.ntainy.guitar_tuner.data.model.MAX_STRING_MIDI
 import dev.ntainy.guitar_tuner.data.model.MIN_STRING_MIDI
+import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
 import dev.ntainy.guitar_tuner.di.AppContainer
 import dev.ntainy.guitar_tuner.dsp.Notation
 import dev.ntainy.guitar_tuner.ui.theme.GuitarTunerTheme
@@ -106,6 +107,7 @@ fun TuningEditorContent(
     modifier: Modifier = Modifier,
     initialPickerIndex: Int? = null,
 ) {
+    val haptics = LocalTunerHaptics.current
     var pickerIndex by rememberSaveable { mutableStateOf(initialPickerIndex) }
 
     Scaffold(
@@ -119,7 +121,13 @@ fun TuningEditorContent(
                     }
                 },
                 actions = {
-                    TextButton(onClick = onSave, enabled = state.canSave) { Text("Save") }
+                    TextButton(
+                        onClick = {
+                            haptics.confirm()
+                            onSave()
+                        },
+                        enabled = state.canSave,
+                    ) { Text("Save") }
                 },
             )
         },
@@ -179,12 +187,12 @@ fun TuningEditorContent(
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(
-                    onClick = { onShiftAll(-1) },
+                    onClick = { haptics.step(); onShiftAll(-1) },
                     enabled = state.isLoaded && state.canShiftDown,
                     modifier = Modifier.weight(1f),
                 ) { Text("Shift all −1") }
                 OutlinedButton(
-                    onClick = { onShiftAll(+1) },
+                    onClick = { haptics.step(); onShiftAll(+1) },
                     enabled = state.isLoaded && state.canShiftUp,
                     modifier = Modifier.weight(1f),
                 ) { Text("Shift all +1") }
@@ -218,6 +226,7 @@ private fun StringRow(
     onPick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalTunerHaptics.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -230,7 +239,7 @@ private fun StringRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onLower, enabled = canLower) {
+        IconButton(onClick = { haptics.step(); onLower() }, enabled = canLower) {
             Icon(Icons.Filled.Remove, contentDescription = "Lower $label a semitone")
         }
         Text(
@@ -244,7 +253,7 @@ private fun StringRow(
                 .clickable(onClick = onPick, onClickLabel = "Choose the note for $label")
                 .padding(horizontal = 8.dp, vertical = 8.dp),
         )
-        IconButton(onClick = onRaise, enabled = canRaise) {
+        IconButton(onClick = { haptics.step(); onRaise() }, enabled = canRaise) {
             Icon(Icons.Filled.Add, contentDescription = "Raise $label a semitone")
         }
     }

@@ -2,6 +2,7 @@
 
 package dev.ntainy.guitar_tuner.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -71,6 +72,12 @@ import dev.ntainy.guitar_tuner.di.AppContainer
 import dev.ntainy.guitar_tuner.dsp.Notation
 import dev.ntainy.guitar_tuner.ui.theme.GuitarTunerTheme
 import dev.ntainy.guitar_tuner.ui.tunings.PreviewData
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
+import dev.ntainy.guitar_tuner.R
+import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
 import dev.ntainy.guitar_tuner.ui.tunings.SectionHeader
 import dev.ntainy.guitar_tuner.ui.tunings.previewContainer
 import kotlin.math.roundToInt
@@ -95,6 +102,8 @@ fun SettingsScreen(container: AppContainer, modifier: Modifier = Modifier) {
             onHeadstockChange = viewModel::setHeadstockLayout,
             onThemeChange = viewModel::setTheme,
             onShowHzChange = viewModel::setShowHz,
+            onHapticsChange = viewModel::setHaptics,
+            onShowTraceChange = viewModel::setShowTrace,
             onKeepScreenOnChange = viewModel::setKeepScreenOn,
             onInputPolicyChange = viewModel::setInputPolicy,
             onPreferredInputChange = viewModel::setPreferredInput,
@@ -113,12 +122,14 @@ data class SettingsActions(
     val onHeadstockChange: (HeadstockLayout) -> Unit,
     val onThemeChange: (ThemeMode) -> Unit,
     val onShowHzChange: (Boolean) -> Unit,
+    val onHapticsChange: (Boolean) -> Unit,
+    val onShowTraceChange: (Boolean) -> Unit,
     val onKeepScreenOnChange: (Boolean) -> Unit,
     val onInputPolicyChange: (InputPolicy) -> Unit,
     val onPreferredInputChange: (String) -> Unit,
 ) {
     companion object {
-        val None = SettingsActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
+        val None = SettingsActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     }
 }
 
@@ -126,6 +137,7 @@ data class SettingsActions(
 @Composable
 fun SettingsContent(state: SettingsUiState, actions: SettingsActions, modifier: Modifier = Modifier) {
     val s = state.settings
+    val haptics = LocalTunerHaptics.current
     Scaffold(
         modifier = modifier,
         topBar = { TopAppBar(title = { Text("Settings") }) },
@@ -175,6 +187,21 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions, modifier: 
                     onCheckedChange = actions.onShowHzChange,
                 )
                 SwitchRow(
+                    title = "Pitch trace",
+                    subtitle = "A scrolling history under the gauge, so you can watch a pluck settle",
+                    checked = s.showTrace,
+                    onCheckedChange = actions.onShowTraceChange,
+                )
+                SwitchRow(
+                    title = "Haptics",
+                    subtitle = "Ticks as you tune, a nudge when a string lands",
+                    checked = s.haptics,
+                    onCheckedChange = { on ->
+                        if (on) haptics.demo()
+                        actions.onHapticsChange(on)
+                    },
+                )
+                SwitchRow(
                     title = "Keep screen on",
                     subtitle = "While the Tune screen is open",
                     checked = s.keepScreenOn,
@@ -191,13 +218,39 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions, modifier: 
                 )
             }
             section("About") {
+                val uriHandler = LocalUriHandler.current
+                val haptics = LocalTunerHaptics.current
                 ListItem(
-                    headlineContent = { Text("GuitarTuner") },
-                    supportingContent = { Text("Version ${state.appVersion.ifBlank { "—" }}") },
+                    headlineContent = { Text(stringResource(R.string.app_name)) },
+                    supportingContent = { Text("Version ${state.appVersion.ifBlank { "\u2014" }}") },
+                )
+                ListItem(
+                    headlineContent = { Text("Source code") },
+                    supportingContent = { Text(SOURCE_URL.removePrefix("https://")) },
+                    trailingContent = {
+                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
+                    },
+                    modifier = Modifier.clickable {
+                        haptics.gestureEnd()
+                        uriHandler.openUri(SOURCE_URL)
+                    },
+                )
+                ListItem(
+                    headlineContent = { Text("Licence") },
+                    supportingContent = {
+                        Text("GNU General Public License v3.0 \u2014 free to use, study, share and modify")
+                    },
+                    trailingContent = {
+                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
+                    },
+                    modifier = Modifier.clickable {
+                        haptics.gestureEnd()
+                        uriHandler.openUri(LICENCE_URL)
+                    },
                 )
                 ListItem(
                     headlineContent = { Text("Pitch detection") },
-                    supportingContent = { Text("YIN · 48 kHz") },
+                    supportingContent = { Text("YIN \u00b7 48 kHz") },
                 )
                 ListItem(
                     headlineContent = { Text("Typeface") },
@@ -205,12 +258,15 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions, modifier: 
                 )
                 ListItem(
                     headlineContent = { Text("Made by") },
-                    supportingContent = { Text("ntainy · 2026") },
+                    supportingContent = { Text("ntainy \u00b7 2026") },
                 )
             }
         }
     }
 }
+
+private const val SOURCE_URL = "https://github.com/ntainy/open-guitar-tuner"
+private const val LICENCE_URL = "https://www.gnu.org/licenses/gpl-3.0.html"
 
 private fun LazyListScope.section(title: String, content: @Composable () -> Unit) {
     item(key = "header_$title") {
@@ -222,6 +278,22 @@ private fun LazyListScope.section(title: String, content: @Composable () -> Unit
         )
     }
     item(key = "section_$title") { Column { content() } }
+}
+
+/**
+ * A slider drag reports many values per whole step, so ticking on every callback would buzz. This ticks once
+ * each time the *rounded* value changes, which is what the user sees change in the readout.
+ */
+@Composable
+private fun rememberStepTicker(): (Int) -> Unit {
+    val haptics = LocalTunerHaptics.current
+    var last by remember { mutableIntStateOf(Int.MIN_VALUE) }
+    return { step ->
+        if (step != last) {
+            last = step
+            haptics.step()
+        }
+    }
 }
 
 // ---- Tuning ---------------------------------------------------------------------------------------------------
@@ -238,6 +310,8 @@ private fun ReferencePitchRow(
     val shown = dragging?.roundToInt() ?: a4Hz.roundToInt()
     val min = TunerSettings.MIN_A4_HZ.roundToInt()
     val max = TunerSettings.MAX_A4_HZ.roundToInt()
+    val haptics = LocalTunerHaptics.current
+    val tick = rememberStepTicker()
 
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(
@@ -251,7 +325,7 @@ private fun ReferencePitchRow(
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = { onStep(-1) }, enabled = shown > min) {
+            IconButton(onClick = { haptics.step(); onStep(-1) }, enabled = shown > min) {
                 Icon(Icons.Filled.Remove, contentDescription = "Lower reference pitch by 1 Hz")
             }
             Text(
@@ -261,16 +335,20 @@ private fun ReferencePitchRow(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.widthIn(min = 64.dp),
             )
-            IconButton(onClick = { onStep(+1) }, enabled = shown < max) {
+            IconButton(onClick = { haptics.step(); onStep(+1) }, enabled = shown < max) {
                 Icon(Icons.Filled.Add, contentDescription = "Raise reference pitch by 1 Hz")
             }
         }
         Slider(
             value = dragging ?: a4Hz.toFloat(),
-            onValueChange = { dragging = it },
+            onValueChange = {
+                dragging = it
+                tick(it.roundToInt())
+            },
             onValueChangeFinished = {
                 dragging?.let { onChange(it.roundToInt().toDouble()) }
                 dragging = null
+                haptics.gestureEnd()
             },
             valueRange = min.toFloat()..max.toFloat(),
             steps = max - min - 1,
@@ -278,7 +356,13 @@ private fun ReferencePitchRow(
                 .fillMaxWidth()
                 .semantics { contentDescription = "Reference pitch, $shown hertz" },
         )
-        TextButton(onClick = onReset, enabled = a4Hz.roundToInt() != 440) { Text("Reset to 440") }
+        TextButton(
+            onClick = {
+                haptics.confirm()
+                onReset()
+            },
+            enabled = a4Hz.roundToInt() != 440,
+        ) { Text("Reset to 440") }
     }
 }
 
@@ -288,6 +372,8 @@ private fun ToleranceRow(toleranceCents: Double, onChange: (Double) -> Unit, mod
     val shown = dragging?.roundToInt() ?: toleranceCents.roundToInt()
     val min = TunerSettings.MIN_TOLERANCE_CENTS.roundToInt()
     val max = TunerSettings.MAX_TOLERANCE_CENTS.roundToInt()
+    val haptics = LocalTunerHaptics.current
+    val tick = rememberStepTicker()
 
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(
@@ -312,10 +398,14 @@ private fun ToleranceRow(toleranceCents: Double, onChange: (Double) -> Unit, mod
         }
         Slider(
             value = dragging ?: toleranceCents.toFloat(),
-            onValueChange = { dragging = it },
+            onValueChange = {
+                dragging = it
+                tick(it.roundToInt())
+            },
             onValueChangeFinished = {
                 dragging?.let { onChange(it.roundToInt().toDouble()) }
                 dragging = null
+                haptics.gestureEnd()
             },
             valueRange = min.toFloat()..max.toFloat(),
             steps = max - min - 1,
@@ -340,12 +430,16 @@ private fun <T> SegmentedRow(
 ) {
     // Two options sit beside the title; three or more get their own full-width line so nothing wraps on a 360 dp screen.
     val stacked = options.size >= 3
+    val haptics = LocalTunerHaptics.current
     val buttons: @Composable () -> Unit = {
         SingleChoiceSegmentedButtonRow(modifier = if (stacked) Modifier.fillMaxWidth() else Modifier) {
             options.forEachIndexed { index, option ->
                 SegmentedButton(
                     selected = option == selected,
-                    onClick = { onSelect(option) },
+                    onClick = {
+                        if (option != selected) haptics.toggle(on = true)
+                        onSelect(option)
+                    },
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                     icon = {},
                     label = { Text(label(option), maxLines = 1, softWrap = false) },
@@ -393,13 +487,17 @@ private fun SwitchRow(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalTunerHaptics.current
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = subtitle?.let { { Text(it) } },
         trailingContent = { Switch(checked = checked, onCheckedChange = null) },
         modifier = modifier
             .fillMaxWidth()
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+            .toggleable(value = checked, role = Role.Switch) { on ->
+                haptics.toggle(on)
+                onCheckedChange(on)
+            },
     )
 }
 
@@ -412,10 +510,14 @@ private fun RadioRow(
     subtitle: String? = null,
     icon: ImageVector? = null,
 ) {
+    val haptics = LocalTunerHaptics.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .selectable(selected = selected, role = Role.RadioButton) {
+                if (!selected) haptics.toggle(on = true)
+                onClick()
+            }
             .heightIn(min = 56.dp)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -492,11 +594,44 @@ private fun InputSection(
             }
             HorizontalDivider(modifier = Modifier.padding(start = 48.dp, end = 16.dp))
         }
+        UsbTips()
+    }
+}
+
+/**
+ * What someone plugging in an interface for the first time needs to know. Kept as prose rather than a help screen:
+ * it is three sentences and this is the page they are already on when it does not work.
+ */
+@Composable
+private fun UsbTips(modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         Text(
-            text = "USB audio interfaces such as the NUX Mighty Plug Pro appear here when connected.",
+            text = "Using a USB interface",
+            style = MaterialTheme.typography.labelLarge,
+            color = scheme.onSurface,
+        )
+        Text(
+            text = "Connect the interface before opening the app \u2014 Android hands it over on connection, and a " +
+                "device plugged in later can take a moment to appear. \u201cPrefer USB\u201d picks it automatically " +
+                "and falls back to the microphone the moment it is unplugged, so you can leave it on.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            color = scheme.onSurfaceVariant,
+        )
+        Text(
+            text = "If nothing shows up: check the cable carries data and not just power, make sure no other app is " +
+                "holding the interface, and reconnect it. Interfaces with their own amp modelling send that modelled " +
+                "signal, which tunes fine but is not the dry string.",
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+        Text(
+            text = "USB audio interfaces such as the NUX Mighty Plug Pro appear in the list above when connected.",
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
         )
     }
 }

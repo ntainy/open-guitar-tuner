@@ -23,6 +23,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import dev.ntainy.guitar_tuner.audio.ReferenceTonePlayer
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 
@@ -58,7 +65,11 @@ class TunerViewModelTest {
         .flatMapLatest { id -> tunings.tuning(id) }
         .map { it ?: InMemoryTuningsRepository.STANDARD }
 
-    private fun viewModel() = TunerViewModel(engine, settings, activeTuning, testTone)
+    /** Virtual clock for the in-tune tick's rate limit; tests move it by hand. */
+    private var nowMs = 10_000L
+
+    private fun viewModel(clock: () -> Long = { nowMs }) =
+        TunerViewModel(engine, settings, activeTuning, testTone, now = clock)
 
     /** Skips the placeholder the StateFlow starts with (it has no strings). */
     private suspend fun ReceiveTurbine<TunerUiState>.awaitDerived(): TunerUiState {
@@ -267,11 +278,173 @@ class TunerViewModelTest {
             engine.startOver()
             expectNoEvents()
             engine.update { it.copy(tunedStrings = setOf(0, 1, 2, 3, 4)) }
-            expectNoEvents()
+            assertEquals(TunerEvent.StringTuned, awaitItem(), "marks earned before the last one are not the toast")
             engine.update { it.copy(tunedStrings = all) }
             assertEquals(TunerEvent.AllTuned, awaitItem())
             engine.update { it.copy(pitchHz = 110.0) } // unrelated state change while still all tuned
             expectNoEvents()
         }
+    }
+
+    @Test
+    fun eachNewMarkFiresStringTunedAndClearingThemFiresNothing() = runTest {
+        val vm = viewModel()
+        vm.events.test {
+            engine.update { it.copy(tunedStrings = setOf(0)) }
+            assertEquals(TunerEvent.StringTuned, awaitItem())
+            engine.update { it.copy(tunedStrings = setOf(0, 3)) }
+            assertEquals(TunerEvent.StringTuned, awaitItem())
+            engine.update { it.copy(tunedStrings = setOf(0, 3)) } // same set again
+            expectNoEvents()
+            engine.startOver() // losing marks is not something to celebrate
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun enteringTheInTuneBandTicksOnceAndIsRateLimited() = runTest {
+        val vm = viewModel()
+        vm.events.test {
+            engine.update { it.copy(inTune = true) }
+            assertEquals(TunerEvent.EnteredBand, awaitItem())
+            // A needle sitting on the edge crosses repeatedly; within the window that must stay silent.
+            repeat(4) {
+                engine.update { it.copy(inTune = false) }
+                engine.update { it.copy(inTune = true) }
+            }
+            expectNoEvents()
+            nowMs += 5_000
+            engine.update { it.copy(inTune = false) }
+            engine.update { it.copy(inTune = true) }
+            assertEquals(TunerEvent.EnteredBand, awaitItem(), "once the window has passed it ticks again")
+        }
+    }
+
+    @Test
+    fun stateThatIsAlreadyTrueWhenTheScreenOpensFiresNothing() = runTest {
+        engine.update { it.copy(tunedStrings = setOf(0, 1), inTune = true) }
+        val vm = viewModel()
+        vm.events.test {
+            expectNoEvents()
+            engine.update { it.copy(pitchHz = 82.4) }
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun theTraceKeepsNoHistoryWhileItIsSwitchedOff() = runTest {
+        settings.update { it.copy(showTrace = false) }
+        val vm = viewModel { testScheduler.currentTime }
+        backgroundScope.launch { vm.trace.collect {} }
+        engine.update { it.copy(centsOff = 4.0) }
+        advanceTimeBy(1_000)
+        assertTrue(vm.trace.value.isEmpty(), "no history is kept while the trace is off")
+
+        settings.update { it.copy(showTrace = true) }
+        advanceTimeBy(1_000)
+        assertTrue(vm.trace.value.size > 20, "about 25 samples a second once it is on")
+    }
+
+    @Test
+    fun theTraceKeepsOnlyItsWindowAndBreaksWhereThePitchDropsOut() = runTest {
+        settings.update { it.copy(showTrace = true) }
+        val vm = viewModel { testScheduler.currentTime }
+        backgroundScope.launch { vm.trace.collect {} }
+
+        engine.update { it.copy(centsOff = 4.0) }
+        advanceTimeBy(1_000)
+        engine.update { it.copy(centsOff = null) } // the string dies away
+        advanceTimeBy(1_000)
+
+        val withGap = vm.trace.value
+        assertTrue(withGap.any { it.cents != null }, "the sounding part is recorded")
+        assertTrue(withGap.any { it.cents == null }, "silence is recorded as a gap, not as a value")
+
+        // Well past the window: everything still held must be inside it.
+        advanceTimeBy(TRACE_WINDOW_MS * 2)
+        val points = vm.trace.value
+        val newest = points.last().atMs
+        assertTrue(points.all { newest - it.atMs <= TRACE_WINDOW_MS }, "older readings are dropped")
+        assertTrue(points.size < TRACE_WINDOW_MS / 40 + 5, "the buffer does not grow without bound")
+    }
+
+    /** Plays for exactly as long as the test says, so the capture hand-off can be checked at each edge. */
+    private class FakeReferenceTone : ReferenceTonePlayer {
+        private val _playing = MutableStateFlow(false)
+        override val playing: StateFlow<Boolean> = _playing.asStateFlow()
+        val played = mutableListOf<Double>()
+        private var note = CompletableDeferred<Unit>()
+
+        override suspend fun play(frequencyHz: Double) {
+            played += frequencyHz
+            _playing.value = true
+            try {
+                note.await()
+            } finally {
+                _playing.value = false
+            }
+        }
+
+        override fun stop() = endNote()
+
+        fun endNote() {
+            note.complete(Unit)
+            note = CompletableDeferred()
+        }
+    }
+
+    @Test
+    fun aReferenceToneSilencesTheMicAndGivesItBackWhenTheNoteEnds() = runTest {
+        val tone = FakeReferenceTone()
+        val vm = TunerViewModel(engine, settings, activeTuning, testTone, tone)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.start()
+        assertTrue(engine.state.value.running)
+
+        val lowE = vm.uiState.value.strings.first().frequencyHz
+        vm.playReferenceTone(0)
+        runCurrent()
+        assertEquals(listOf(lowE), tone.played, "it plays the target pitch of the string that was held")
+        assertFalse(engine.state.value.running, "capture stops, or the tuner would tune to the phone's own speaker")
+
+        tone.endNote()
+        runCurrent()
+        assertTrue(engine.state.value.running, "the mic comes back once the note has finished")
+    }
+
+    @Test
+    fun aNoteFinishingAfterTheScreenIsGoneDoesNotReopenTheMic() = runTest {
+        val tone = FakeReferenceTone()
+        val vm = TunerViewModel(engine, settings, activeTuning, testTone, tone)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.start()
+
+        vm.playReferenceTone(2)
+        runCurrent()
+        vm.stop() // the user leaves the Tune screen while the note is still ringing
+        tone.endNote()
+        runCurrent()
+        assertFalse(engine.state.value.running, "a finished note must not quietly restart capture")
+    }
+
+    @Test
+    fun overlappingReferenceTonesResumeCaptureOnlyOnce() = runTest {
+        val tone = FakeReferenceTone()
+        val vm = TunerViewModel(engine, settings, activeTuning, testTone, tone)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.start()
+
+        vm.playReferenceTone(0)
+        vm.playReferenceTone(1)
+        runCurrent()
+        assertEquals(2, tone.played.size)
+        assertFalse(engine.state.value.running)
+
+        tone.endNote() // both notes are waiting on the same gate
+        runCurrent()
+        assertTrue(engine.state.value.running)
     }
 }

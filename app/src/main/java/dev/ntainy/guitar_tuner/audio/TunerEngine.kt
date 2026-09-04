@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
  * @property inTune true while |centsOff| <= tolerance
  * @property tunedStrings strings that have been held in tune long enough since the last "Start over"
  * @property autoMode true when the target string follows the detected pitch; false when the user pinned one
+ * @property chromaticMidi in chromatic mode, the nearest MIDI note to [pitchHz]; null in every string tuning
  */
 data class TunerState(
     val pitchHz: Double? = null,
@@ -21,6 +22,7 @@ data class TunerState(
     val inTune: Boolean = false,
     val tunedStrings: Set<Int> = emptySet(),
     val autoMode: Boolean = true,
+    val chromaticMidi: Int? = null,
     val input: AudioInputDevice? = null,
     val availableInputs: List<AudioInputDevice> = emptyList(),
     val permissionGranted: Boolean = false,

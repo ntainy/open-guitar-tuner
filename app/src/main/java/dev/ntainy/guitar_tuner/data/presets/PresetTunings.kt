@@ -13,9 +13,22 @@ import dev.ntainy.guitar_tuner.data.model.TuningGroup
  * one-line hint about the tuning's character rather than a note list.
  */
 object PresetTunings {
-    /** Every preset, in catalog order. The first entry is Standard with id [PresetIds.STANDARD]. */
+    /**
+     * Every preset, in catalog order: the chromatic entry, then Standard, then Power, Transposed, Open and Extras.
+     *
+     * Chromatic sits in the list because that is where the user chooses what they are tuning; its strings are
+     * Standard's and are never read (see [Tuning.isChromatic]). It is carried here rather than special-cased in the
+     * repository so that selecting it, persisting it and resolving it back all work with no extra machinery.
+     */
     val all: List<Tuning> = listOf(
         // Standard
+        preset(
+            PresetIds.CHROMATIC,
+            "Chromatic",
+            "Any note, no strings",
+            TuningGroup.STANDARD,
+            40, 45, 50, 55, 59, 64,
+        ),
         preset(PresetIds.STANDARD, "Standard", "The everyday tuning", TuningGroup.STANDARD, 40, 45, 50, 55, 59, 64),
 
         // Power

@@ -1,6 +1,6 @@
 # Architecture
 
-GuitarTuner is a single-activity Compose app with one hand-rolled dependency graph and a pure-JVM DSP module.
+OpenGuitarTuner is a single-activity Compose app with one hand-rolled dependency graph and a pure-JVM DSP module.
 Everything user-visible is derived from two flows: `TunerEngine.state` (what the microphone hears) and the
 settings/tunings repositories (what the user chose).
 

@@ -322,7 +322,20 @@ class AudioTunerEngine(
         val targets = current?.frequencies(settings.value.a4Hz)
         if (pitchHz == null || pitchHz <= 0.0 || targets == null || targets.isEmpty()) {
             tunedRun = 0
-            _state.update { it.copy(pitchHz = null, confidence = confidence, level = level, centsOff = null, inTune = false) }
+            _state.update {
+                it.copy(
+                    pitchHz = null,
+                    confidence = confidence,
+                    level = level,
+                    centsOff = null,
+                    inTune = false,
+                    chromaticMidi = null,
+                )
+            }
+            return
+        }
+        if (current.isChromatic) {
+            publishChromaticFrame(pitchHz, confidence, level)
             return
         }
         val match = matchTarget(pitchHz, targets)
@@ -357,6 +370,37 @@ class AudioTunerEngine(
                 centsOff = cents,
                 inTune = inTune,
                 tunedStrings = if (markTuned) it.tunedStrings + target else it.tunedStrings,
+                chromaticMidi = null,
+            )
+        }
+    }
+
+    /**
+     * Chromatic mode: no strings, so no resolver and no overtone folding — the target is simply the nearest note of
+     * the twelve-tone scale to what is being heard, and the cents are measured against that.
+     *
+     * The octave guard upstream still applies, so a decaying note does not drop an octave mid-reading, but nothing
+     * folds an overtone back onto a fundamental here: if the ear hears the octave, the display should say so.
+     * There are no tuned marks either; a chromatic reading is a measurement, not a task with an end.
+     */
+    private fun publishChromaticFrame(pitchHz: Double, confidence: Double, level: Double) {
+        val a4Hz = settings.value.a4Hz
+        val midi = NoteMath.nearestMidi(pitchHz, a4Hz)
+        val cents = NoteMath.cents(pitchHz, midi, a4Hz)
+        val inTune = abs(cents) <= settings.value.toleranceCents
+        tunedRun = 0
+        if (BuildConfig.DEBUG) {
+            Log.v(FRAMES_TAG, "chromatic midi=%d cents=%+.1f inTune=%b".format(midi, cents, inTune))
+        }
+        _state.update {
+            it.copy(
+                pitchHz = pitchHz,
+                confidence = confidence,
+                level = level,
+                targetIndex = null,
+                centsOff = cents,
+                inTune = inTune,
+                chromaticMidi = midi,
             )
         }
     }

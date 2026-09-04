@@ -49,10 +49,21 @@ data class Tuning(
     }
 
     val isValid: Boolean get() = validationErrors().isEmpty()
+
+    /**
+     * The chromatic entry: not a tuning at all, but the user picks it from the same list, so it travels as one.
+     *
+     * Its [strings] are Standard's and are ignored — in chromatic mode the engine skips the resolver and measures
+     * against the nearest note of the scale instead of against a string.
+     */
+    val isChromatic: Boolean get() = id == PresetIds.CHROMATIC
 }
 
 /** Ids of presets other code needs to refer to. The full catalog lives in `data/presets/PresetTunings.kt`. */
 object PresetIds {
     const val STANDARD = "preset_standard"
+
+    /** The chromatic entry; see [Tuning.isChromatic]. */
+    const val CHROMATIC = "preset_chromatic"
     const val PREFIX = "preset_"
 }

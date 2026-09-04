@@ -28,6 +28,8 @@ data class TuningRowUi(
     val noteLabels: List<String>,
     val isSelected: Boolean,
     val isCustom: Boolean,
+    /** The chromatic entry: it has no strings to show, so the row carries no note chips. */
+    val isChromatic: Boolean = false,
 )
 
 /** A group header plus its rows. "My tunings" is present even when [rows] is empty (the screen shows a hint). */
@@ -124,8 +126,9 @@ private fun Tuning.toRow(activeId: String, notation: Notation): TuningRowUi {
         id = id,
         name = name,
         subtitle = if (isPreset) subtitle.ifBlank { letters } else letters,
-        noteLabels = strings.map { NoteMath.name(it, notation) },
+        noteLabels = if (isChromatic) emptyList() else strings.map { NoteMath.name(it, notation) },
         isSelected = id == activeId,
         isCustom = !isPreset,
+        isChromatic = isChromatic,
     )
 }

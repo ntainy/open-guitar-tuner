@@ -3,6 +3,9 @@ agp = "9.4.0"
 kotlin = "2.3.21"
 coreKtx = "1.19.0"
 composeBom = "2026.08.00"
+# Ahead of the BOM (which pins 1.4.0) for the public Material 3 Expressive API: MaterialExpressiveTheme,
+# MotionScheme and the expressive components are all compiled `internal` in 1.4.0.
+material3 = "1.5.0-alpha27"
 activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 navigation3 = "1.1.7"
@@ -24,7 +27,7 @@ androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
-androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version = "1.7.8" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }

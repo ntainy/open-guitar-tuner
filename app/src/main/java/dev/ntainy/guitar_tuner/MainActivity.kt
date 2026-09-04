@@ -6,10 +6,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.ntainy.guitar_tuner.data.model.TunerSettings
+import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
+import dev.ntainy.guitar_tuner.ui.haptics.rememberTunerHaptics
 import dev.ntainy.guitar_tuner.ui.nav.AppNav
 import dev.ntainy.guitar_tuner.ui.theme.GuitarTunerTheme
 import dev.ntainy.guitar_tuner.ui.theme.isDark
@@ -27,7 +30,9 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
             }
             GuitarTunerTheme(darkTheme = dark) {
-                AppNav(container = container)
+                CompositionLocalProvider(LocalTunerHaptics provides rememberTunerHaptics(settings.haptics)) {
+                    AppNav(container = container)
+                }
             }
         }
     }

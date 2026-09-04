@@ -66,6 +66,10 @@ class SettingsViewModel(
 
     fun setShowHz(show: Boolean) = write { it.copy(showHz = show) }
 
+    fun setHaptics(enabled: Boolean) = write { it.copy(haptics = enabled) }
+
+    fun setShowTrace(show: Boolean) = write { it.copy(showTrace = show) }
+
     fun setKeepScreenOn(keep: Boolean) = write { it.copy(keepScreenOn = keep) }
 
     fun setInputPolicy(policy: InputPolicy) = write { it.copy(inputPolicy = policy) }

@@ -122,6 +122,7 @@ fun Headstock(
     onStringTap: (Int) -> Unit,
     modifier: Modifier = Modifier,
     manualMode: Boolean = false,
+    onStringLongPress: ((Int) -> Unit)? = null,
 ) {
     val spec = layout.spec
     val targetIndex = strings.firstOrNull { it.isTarget }?.index
@@ -144,6 +145,8 @@ fun Headstock(
                     modifier = Modifier.layoutId(string.index),
                     contentDescription = string.accessibilityLabel,
                     dimmed = manualMode && !string.isTarget,
+                    onLongClick = onStringLongPress?.let { { it(string.index) } },
+                    onLongClickLabel = "Play ${string.label}",
                 )
             }
         },

@@ -50,6 +50,7 @@ import dev.ntainy.guitar_tuner.data.model.HeadstockLayout
 import dev.ntainy.guitar_tuner.data.model.TunerSettings
 import dev.ntainy.guitar_tuner.data.model.Tuning
 import dev.ntainy.guitar_tuner.data.model.TuningGroup
+import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
 import dev.ntainy.guitar_tuner.di.AppContainer
 import dev.ntainy.guitar_tuner.dsp.Notation
 import dev.ntainy.guitar_tuner.ui.theme.GuitarTunerTheme
@@ -107,6 +108,7 @@ fun TuningsContent(
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
+    val haptics = LocalTunerHaptics.current
     var pendingDelete by remember { mutableStateOf<TuningRowUi?>(null) }
 
     Scaffold(
@@ -152,7 +154,7 @@ fun TuningsContent(
                 items(section.rows, key = { it.id }) { row ->
                     TuningRow(
                         row = row,
-                        onClick = { onSelect(row.id) },
+                        onClick = { haptics.toggle(on = true); onSelect(row.id) },
                         onEdit = { onEdit(row.id) },
                         onDuplicate = { onDuplicate(row.id) },
                         onDelete = { pendingDelete = row },
@@ -188,6 +190,7 @@ private fun HeadstockLayoutSelector(
     onLayoutChange: (HeadstockLayout) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalTunerHaptics.current
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "Headstock",
@@ -199,7 +202,7 @@ private fun HeadstockLayoutSelector(
             HeadstockLayout.entries.forEachIndexed { index, option ->
                 SegmentedButton(
                     selected = option == layout,
-                    onClick = { onLayoutChange(option) },
+                    onClick = { haptics.toggle(on = true); onLayoutChange(option) },
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = HeadstockLayout.entries.size),
                     icon = {},
                     label = { Text(option.label, maxLines = 1, softWrap = false) },

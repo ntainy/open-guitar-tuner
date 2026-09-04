@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import dev.ntainy.guitar_tuner.data.model.MAX_STRING_MIDI
 import dev.ntainy.guitar_tuner.data.model.MIN_STRING_MIDI
 import dev.ntainy.guitar_tuner.dsp.Notation
+import dev.ntainy.guitar_tuner.ui.haptics.LocalTunerHaptics
 import dev.ntainy.guitar_tuner.dsp.NoteMath
 import dev.ntainy.guitar_tuner.ui.theme.GuitarTunerTheme
 
@@ -71,6 +72,7 @@ fun NotePickerContent(
     onPick: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalTunerHaptics.current
     val notes = remember { (MIN_STRING_MIDI..MAX_STRING_MIDI).toList() }
     val currentIndex = (current - MIN_STRING_MIDI).coerceIn(0, notes.lastIndex)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 3).coerceAtLeast(0))
@@ -94,7 +96,10 @@ fun NotePickerContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .selectable(selected = selected, role = Role.RadioButton, onClick = { onPick(midi) })
+                        .selectable(selected = selected, role = Role.RadioButton) {
+                            haptics.toggle(on = true)
+                            onPick(midi)
+                        }
                         .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
                         .heightIn(min = 48.dp)
                         .padding(horizontal = 24.dp),

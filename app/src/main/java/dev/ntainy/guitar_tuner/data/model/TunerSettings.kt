@@ -36,6 +36,8 @@ data class TunerSettings(
     val keepScreenOn: Boolean = true,
     val theme: ThemeMode = ThemeMode.DARK,
     val showHz: Boolean = true,
+    val haptics: Boolean = true,
+    val showTrace: Boolean = true,
     val activeTuningId: String = PresetIds.STANDARD,
 ) {
     companion object {

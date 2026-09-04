@@ -174,15 +174,16 @@ class DataStoreTuningsRepositoryTest {
     @Test
     fun `duplicate of a preset lands in MINE with a fresh id`() = runTest {
         val repo = open().repo
+        val standard = checkNotNull(PresetTunings.byId(PresetIds.STANDARD))
         val copy = repo.duplicate(PresetIds.STANDARD)
 
         assertEquals("custom_1", copy.id)
         assertEquals(TuningGroup.MINE, copy.group)
         assertFalse(copy.isPreset)
         assertEquals(1_000L, copy.createdAt)
-        assertEquals(PresetTunings.all.first().strings, copy.strings)
+        assertEquals(standard.strings, copy.strings)
         assertEquals(copy, repo.tuning("custom_1").first())
-        assertEquals(PresetTunings.all.first(), repo.tuning(PresetIds.STANDARD).first())
+        assertEquals(standard, repo.tuning(PresetIds.STANDARD).first())
     }
 
     @Test

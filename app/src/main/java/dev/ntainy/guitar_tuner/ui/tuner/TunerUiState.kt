@@ -8,6 +8,7 @@ import dev.ntainy.guitar_tuner.data.model.HeadstockLayout
 import dev.ntainy.guitar_tuner.data.model.STRING_COUNT
 import dev.ntainy.guitar_tuner.data.model.TunerSettings
 import dev.ntainy.guitar_tuner.data.model.Tuning
+import dev.ntainy.guitar_tuner.dsp.Notation
 import dev.ntainy.guitar_tuner.dsp.NoteMath
 import java.util.Locale
 import kotlin.math.abs
@@ -64,6 +65,12 @@ data class TunerUiState(
     val permissionGranted: Boolean = false,
     val running: Boolean = false,
     val error: String? = null,
+    /** Chromatic mode: no strings, no AUTO, no tuned marks — just the nearest note to whatever is playing. */
+    val chromatic: Boolean = false,
+    /** In chromatic mode, the MIDI note the reading is measured against; null otherwise. */
+    val chromaticMidi: Int? = null,
+    /** Sharps or flats, for the note strip; every other label is already spelled. */
+    val notation: Notation = Notation.SHARPS,
     val headstockLayout: HeadstockLayout = HeadstockLayout.THREE_PLUS_THREE,
     val keepScreenOn: Boolean = true,
     val toleranceCents: Double = 3.0,
@@ -97,7 +104,8 @@ fun deriveTunerUiState(
     selectedInputKey: String?,
 ): TunerUiState {
     val notation = settings.notation
-    val strings = tuning.strings.mapIndexed { index, midi ->
+    val chromatic = tuning.isChromatic
+    val strings = if (chromatic) emptyList() else tuning.strings.mapIndexed { index, midi ->
         StringUi(
             index = index,
             label = NoteMath.name(midi, notation),
@@ -106,7 +114,8 @@ fun deriveTunerUiState(
             frequencyHz = NoteMath.frequency(midi, settings.a4Hz),
         )
     }
-    val targetMidi = engine.targetIndex?.let { tuning.strings.getOrNull(it) }
+    // In chromatic mode the note comes from the engine's nearest-note reading, not from a string of the tuning.
+    val targetMidi = if (chromatic) engine.chromaticMidi else engine.targetIndex?.let { tuning.strings.getOrNull(it) }
     val cents = engine.centsOff
     // The engine owns the flag, but the gauge draws a ±tolerance band, so anything inside it must read as in tune.
     val inTune = cents != null && (engine.inTune || abs(cents) <= settings.toleranceCents)
@@ -134,6 +143,9 @@ fun deriveTunerUiState(
         pitchHz = engine.pitchHz,
         showHz = settings.showHz,
         autoMode = engine.autoMode,
+        chromatic = chromatic,
+        chromaticMidi = if (chromatic) engine.chromaticMidi else null,
+        notation = notation,
         input = engine.input,
         inputCaption = inputCaption(engine.input),
         availableInputs = engine.availableInputs,

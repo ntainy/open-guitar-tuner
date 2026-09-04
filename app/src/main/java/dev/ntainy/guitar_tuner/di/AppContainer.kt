@@ -5,8 +5,10 @@ import dev.ntainy.guitar_tuner.audio.AndroidAudioInputMonitor
 import dev.ntainy.guitar_tuner.audio.AudioInputMonitor
 import dev.ntainy.guitar_tuner.audio.AudioRecordSource
 import dev.ntainy.guitar_tuner.audio.AudioSource
+import dev.ntainy.guitar_tuner.audio.AudioTrackReferenceTonePlayer
 import dev.ntainy.guitar_tuner.audio.AudioTunerEngine
 import dev.ntainy.guitar_tuner.audio.InputKind
+import dev.ntainy.guitar_tuner.audio.ReferenceTonePlayer
 import dev.ntainy.guitar_tuner.audio.SyntheticToneSource
 import dev.ntainy.guitar_tuner.audio.TunerEngine
 import dev.ntainy.guitar_tuner.data.DataStoreSettingsRepository
@@ -75,6 +77,11 @@ open class AppContainer(val appContext: Context) {
             tuningFlow = activeTuning,
             settingsFlow = settingsRepository.settings,
         )
+    }
+
+    /** Reference tones for long-pressing a string. Notes run on [appScope], off the main thread. */
+    open val referenceTonePlayer: ReferenceTonePlayer by lazy {
+        AudioTrackReferenceTonePlayer(appContext = appContext, scope = appScope)
     }
 
     /** The tuning selected in settings, falling back to Standard if the id no longer exists. */
