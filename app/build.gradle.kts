@@ -82,6 +82,15 @@ android {
     }
 }
 
+// The recording replay harness (RecordingReplayTest) takes its inputs as `-Ptuner.replay.*` properties, forwarded
+// here into the forked test JVM: environment variables do not reliably reach it through a warm daemon.
+tasks.withType<Test>().configureEach {
+    val replayProperties = listOf("tuner.replay.file", "tuner.replay.gainDb", "tuner.replay.sensitivityDb", "tuner.replay.out")
+    replayProperties.forEach { key ->
+        providers.gradleProperty(key).orNull?.let { systemProperty(key, it) }
+    }
+}
+
 dependencies {
     implementation(project(":dsp"))
 

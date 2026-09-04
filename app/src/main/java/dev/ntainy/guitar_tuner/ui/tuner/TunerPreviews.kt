@@ -333,6 +333,52 @@ private fun InputSheetPreview() {
                 state = previewContainer(state).uiState(selectedInputKey = PREVIEW_TEST_TONE.key),
                 onSelectInput = {},
                 onTestToneHz = {},
+                onSensitivityDb = {},
+            )
+        }
+    }
+}
+
+/** The USB interface active with a boosted sensitivity: a quiet string sitting just past the gate's mark. */
+@Preview(name = "Input sheet, USB sensitivity", showBackground = true, widthDp = PHONE_WIDTH)
+@Composable
+private fun InputSheetSensitivityPreview() {
+    val state = LISTENING.copy(
+        input = PREVIEW_USB,
+        availableInputs = listOf(PREVIEW_BUILTIN_MIC, PREVIEW_USB, PREVIEW_TEST_TONE),
+        level = 0.012,
+        gateLevel = 0.004,
+    )
+    val container = previewContainer(state, settings = TunerSettings(sensitivityDb = mapOf(PREVIEW_USB.key to 18.0)))
+    GuitarTunerTheme {
+        Surface {
+            InputPickerContent(
+                state = container.uiState(selectedInputKey = PREVIEW_USB.key),
+                onSelectInput = {},
+                onTestToneHz = {},
+                onSensitivityDb = {},
+            )
+        }
+    }
+}
+
+/** The microphone at its default sensitivity, between plucks: the bar sits below the mark. */
+@Preview(name = "Input sheet, mic below gate", showBackground = true, widthDp = PHONE_WIDTH)
+@Composable
+private fun InputSheetMicPreview() {
+    val state = LISTENING.copy(
+        input = PREVIEW_BUILTIN_MIC,
+        availableInputs = listOf(PREVIEW_BUILTIN_MIC, PREVIEW_TEST_TONE),
+        level = 0.002,
+        gateLevel = 0.004,
+    )
+    GuitarTunerTheme(darkTheme = false) {
+        Surface {
+            InputPickerContent(
+                state = previewContainer(state).uiState(),
+                onSelectInput = {},
+                onTestToneHz = {},
+                onSensitivityDb = {},
             )
         }
     }

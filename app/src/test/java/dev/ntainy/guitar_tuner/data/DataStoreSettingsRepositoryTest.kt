@@ -135,4 +135,37 @@ class DataStoreSettingsRepositoryTest {
         assertEquals(TunerSettings.MAX_A4_HZ, settings.a4Hz)
         assertEquals(TunerSettings.MIN_TOLERANCE_CENTS, settings.toleranceCents)
     }
+
+    @Test
+    fun `sensitivity is kept per input, clamped, and dropped at 0 dB`() = runTest {
+        val repo = open().repo
+        repo.update { it.withSensitivity("usb:NUX MP-3", 18.0).withSensitivity("builtin", -6.0) }
+        val stored = repo.settings.first()
+        assertEquals(mapOf("usb:NUX MP-3" to 18.0, "builtin" to -6.0), stored.sensitivityDb)
+        assertEquals(18.0, stored.sensitivityFor("usb:NUX MP-3"))
+        assertEquals(0.0, stored.sensitivityFor("usb:Other interface"), "an unknown input runs at 0 dB")
+        assertEquals(0.0, stored.sensitivityFor(null))
+
+        repo.update {
+            it.copy(
+                sensitivityDb = mapOf("usb:NUX MP-3" to 99.0, "builtin" to -99.0, "wired" to 0.0, "bt:x" to Double.NaN),
+            )
+        }
+        assertEquals(
+            mapOf("usb:NUX MP-3" to TunerSettings.MAX_SENSITIVITY_DB, "builtin" to TunerSettings.MIN_SENSITIVITY_DB),
+            repo.settings.first().sensitivityDb,
+        )
+
+        repo.update { it.withSensitivity("usb:NUX MP-3", 0.0) }
+        assertEquals(mapOf("builtin" to TunerSettings.MIN_SENSITIVITY_DB), repo.settings.first().sensitivityDb)
+    }
+
+    @Test
+    fun `sensitivity survives reopening the store`() = runTest {
+        val first = open()
+        first.repo.update { it.withSensitivity("usb:NUX MP-3", 24.0) }
+        first.handle.close()
+
+        assertEquals(mapOf("usb:NUX MP-3" to 24.0), open().repo.settings.first().sensitivityDb)
+    }
 }

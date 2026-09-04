@@ -20,6 +20,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk && adb shell am start -
 adb exec-out screencap -p > /tmp/shot.png                      # then Read the PNG
 adb logcat -s TunerEngine AudioInputMonitor                    # device choice, capture start/stop
 adb logcat -v time -s TunerFrames:V > frames.txt               # debug builds: one line per analysis frame
+./gradlew :app:testDebugUnitTest --tests '*RecordingReplayTest*' -Ptuner.replay.file=rec.f32 \
+    -Ptuner.replay.gainDb=-24 -Ptuner.replay.sensitivityDb=24  # replay a 48 kHz mono recording (raw f32 or WAV) through
+                                                               # the real engine on the JVM; writes rec.f32.replay.tsv
 adb shell dumpsys media.audio_policy | grep -i submix         # if the reference tone arrives seconds late: Android Studio's
                                                                # Running Devices redirects media audio to the Mac (Remote Submix)
 ./gradlew assembleRelease                                      # R8 on; unsigned unless a keystore is configured
@@ -73,9 +76,14 @@ never "off". The trail behind the needle is the last `TRACE_WINDOW_MS` (1.5 s) o
 `showTrace` setting ("Needle trail"). `HeadstockSpec.visible` crops the art at the nut; string buttons are centred
 on `pegAnchors` (60 dp, shrinking to 40 dp via `stringButtonSize` when posts are closer), so there are no side
 columns and no post rings. Chromatic mode swaps the headstock for the 144 dp `NoteGlyph` + `NoteStrip`. The editor
-reuses `Headstock` as its preview (340 dp) and opens the note picker from a post.
+reuses `Headstock` as its preview (340 dp) and opens the note picker from a post. The input icon opens
+`ui/tuner/InputPickerSheet.kt`: Auto, every device, then for the active input a **Sensitivity** slider (−12…+36 dB,
+whole dB) over a level meter (`TunerState.level` against `TunerState.gateLevel`, 60 dB span). Sensitivity is stored per
+input in `TunerSettings.sensitivityDb`, keyed by `AudioInputDevice.key`, so the NUX keeps its own value and the mic its
+own; 0 dB means no entry.
 
-Audio chain: `AudioSource.samples()` (48 kHz mono float chunks) → `FrameAssembler` (4096 window, 2048 hop) →
+Audio chain: `AudioSource.samples()` (48 kHz mono float chunks) → sensitivity gain for that input (plain multiply, so
+every level threshold below sees the same louder signal) → `FrameAssembler` (4096 window, 2048 hop) →
 `PitchDetector.detect` (YIN) → `NoiseGate` → `OctaveGuard` → `PitchSmoother.push` → `TargetResolver.resolveMatch`
 (overtone folds) → `TunerState`. When the active tuning `isChromatic` the chain stops after the octave guard: no
 resolver, no folds, target = `NoteMath.nearestMidi`, published as `TunerState.chromaticMidi` with `targetIndex` null. `OnsetDetector` holds the reading ~300 ms after each attack. `docs/DSP.md` explains

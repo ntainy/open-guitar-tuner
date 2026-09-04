@@ -99,9 +99,16 @@ are tuning.
   tag pushes, so fork PRs cannot reach the signing secrets.
 - **USB tips in Settings › Input** ✅ — connect before opening, what "Prefer USB" does, what to check when nothing
   appears, and a note that amp-modelling interfaces send the modelled signal.
-- **USB verification with the MP-3** (S) — still the one thing that has never met hardware. First plug-in with your
-  friend: confirm it appears in the input sheet, is auto-selected, tunes an electric cleanly, and that unplugging
-  falls back to the mic. Grep `adb logcat -s TunerEngine AudioInputMonitor`.
+- **USB verification with the MP-3** (S) — first contact on 4 Sep 2026: it appears, is picked up and tunes out of the
+  box. Two reports came back: in the MP-3's dry mode the tuner only reacts to hard strokes (the dry signal sits far
+  below the thresholds), and with the amp simulator the reading floats. The first got **Sensitivity per input** (input
+  sheet, remembered per `AudioInputDevice.key`) plus a level meter; the recording he sent replays cleanly through the
+  engine (`docs/DSP.md`, "Replaying a recording"). Still to confirm on hardware: the meter reading in dry mode, and
+  that unplugging falls back to the mic. Grep `adb logcat -s TunerEngine AudioInputMonitor`.
+- **Attack frame at a re-pluck** (S) — seen in the MP-3 replay: after a short pause the first analysis frame carries
+  the attack at its tail and reads as a confident wrong pitch, which the onset hold then freezes for ~300 ms (four
+  episodes in two minutes). Candidate fix: `MedianEmaSmoother` confirms the first reading after a reset with a second
+  agreeing frame (one frame of latency on a fresh note).
 
 ## Data
 - **Import/export tunings** (S) — share sheet out, document picker in, id-safe merge; per-tuning share.

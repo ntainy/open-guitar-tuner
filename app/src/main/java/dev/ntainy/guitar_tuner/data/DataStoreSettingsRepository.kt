@@ -34,6 +34,8 @@ class DataStoreSettingsRepository(
 /**
  * Clamps `a4Hz` to [TunerSettings.MIN_A4_HZ]..[TunerSettings.MAX_A4_HZ] and `toleranceCents` to
  * [TunerSettings.MIN_TOLERANCE_CENTS]..[TunerSettings.MAX_TOLERANCE_CENTS]; a NaN falls back to the default value.
+ * Every `sensitivityDb` entry is clamped to [TunerSettings.MIN_SENSITIVITY_DB]..[TunerSettings.MAX_SENSITIVITY_DB];
+ * NaN and 0 dB entries are dropped (0 dB is what a missing entry means).
  */
 internal fun TunerSettings.sanitized(): TunerSettings = copy(
     a4Hz = a4Hz.clampOr(TunerSettings.MIN_A4_HZ, TunerSettings.MAX_A4_HZ, DEFAULT_SETTINGS.a4Hz),
@@ -42,6 +44,13 @@ internal fun TunerSettings.sanitized(): TunerSettings = copy(
         TunerSettings.MAX_TOLERANCE_CENTS,
         DEFAULT_SETTINGS.toleranceCents,
     ),
+    sensitivityDb = sensitivityDb.mapNotNull { (key, db) ->
+        if (db.isNaN() || db == 0.0) {
+            null
+        } else {
+            key to db.coerceIn(TunerSettings.MIN_SENSITIVITY_DB, TunerSettings.MAX_SENSITIVITY_DB)
+        }
+    }.toMap(),
 )
 
 private val DEFAULT_SETTINGS = TunerSettings()

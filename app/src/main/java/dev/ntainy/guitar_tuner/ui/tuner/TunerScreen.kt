@@ -203,6 +203,7 @@ fun TunerScreen(container: AppContainer, onOpenTunings: () -> Unit, modifier: Mo
             state = state,
             onSelectInput = viewModel::selectInput,
             onTestToneHz = viewModel::setTestToneHz,
+            onSensitivityDb = viewModel::setSensitivityDb,
             onDismiss = { showInputSheet = false },
         )
     }

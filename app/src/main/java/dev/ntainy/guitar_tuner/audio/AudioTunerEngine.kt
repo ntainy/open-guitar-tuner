@@ -17,6 +17,7 @@ import dev.ntainy.guitar_tuner.dsp.PitchSmoother
 import dev.ntainy.guitar_tuner.dsp.TargetResolver
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
+import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -222,7 +223,7 @@ class AudioTunerEngine(
             synchronized(dspLock) { resetDsp() }
             _state.update { it.copy(running = true, error = null) }
             val failure: Throwable = try {
-                source.samples().collect { chunk -> analyse(chunk) }
+                source.samples().collect { chunk -> analyse(chunk, device) }
                 AudioSourceException("${device.name} stopped delivering audio")
             } catch (e: CancellationException) {
                 throw e
@@ -257,12 +258,18 @@ class AudioTunerEngine(
         }
     }
 
-    /** One captured chunk: level, then every analysis frame the assembler completes from it. */
-    private fun analyse(chunk: FloatArray) {
+    /**
+     * One captured chunk: the input's sensitivity, then level, then every analysis frame the assembler completes
+     * from it. Sensitivity is plain gain on the samples, so every level rule downstream (the detector's silence
+     * floor, the noise gate, the onset detector) sees the same louder signal and no threshold needs its own knob.
+     */
+    private fun analyse(chunk: FloatArray, device: AudioInputDevice) {
+        applySensitivity(chunk, settings.value.sensitivityFor(device.key))
         val level = rms(chunk)
         synchronized(dspLock) {
             if (!startRequested.value) return
             noiseGate.observe(level)
+            val gate = noiseGate.threshold
             if (onsetDetector.push(level)) {
                 // A new attack: its first ~300 ms carry a sharp, unstable transient. Freeze the reading until it
                 // has passed, then start the smoother and the octave context fresh from the settled pitch.
@@ -286,7 +293,7 @@ class AudioTunerEngine(
                     if (BuildConfig.DEBUG) {
                         Log.v(FRAMES_TAG, "hold raw=%.2f conf=%.2f rms=%.4f".format(raw?.frequencyHz ?: 0.0, raw?.confidence ?: 0.0, level))
                     }
-                    _state.update { it.copy(level = level) }
+                    _state.update { it.copy(level = level, gateLevel = gate) }
                     return@push
                 }
                 // A ringing string cannot jump an octave without an attack: fold octave errors onto the note.
@@ -310,14 +317,14 @@ class AudioTunerEngine(
                         ),
                     )
                 }
-                publishFrame(pitchHz, estimate?.confidence ?: 0.0, level)
+                publishFrame(pitchHz, estimate?.confidence ?: 0.0, level, gate)
             }
-            if (!framed) _state.update { it.copy(level = level) }
+            if (!framed) _state.update { it.copy(level = level, gateLevel = gate) }
         }
     }
 
     /** Called under [dspLock] with the smoothed pitch of one frame. */
-    private fun publishFrame(pitchHz: Double?, confidence: Double, level: Double) {
+    private fun publishFrame(pitchHz: Double?, confidence: Double, level: Double, gate: Double) {
         val current = tuning.value
         val targets = current?.frequencies(settings.value.a4Hz)
         if (pitchHz == null || pitchHz <= 0.0 || targets == null || targets.isEmpty()) {
@@ -327,6 +334,7 @@ class AudioTunerEngine(
                     pitchHz = null,
                     confidence = confidence,
                     level = level,
+                    gateLevel = gate,
                     centsOff = null,
                     inTune = false,
                     chromaticMidi = null,
@@ -335,14 +343,23 @@ class AudioTunerEngine(
             return
         }
         if (current.isChromatic) {
-            publishChromaticFrame(pitchHz, confidence, level)
+            publishChromaticFrame(pitchHz, confidence, level, gate)
             return
         }
         val match = matchTarget(pitchHz, targets)
         if (match == null) {
             // Plausibly no string of this tuning (e.g. a hum far below the low E): show it as silence.
             tunedRun = 0
-            _state.update { it.copy(pitchHz = null, confidence = confidence, level = level, centsOff = null, inTune = false) }
+            _state.update {
+                it.copy(
+                    pitchHz = null,
+                    confidence = confidence,
+                    level = level,
+                    gateLevel = gate,
+                    centsOff = null,
+                    inTune = false,
+                )
+            }
             return
         }
         val target = match.index
@@ -366,6 +383,7 @@ class AudioTunerEngine(
                 pitchHz = pitchHz,
                 confidence = confidence,
                 level = level,
+                gateLevel = gate,
                 targetIndex = target,
                 centsOff = cents,
                 inTune = inTune,
@@ -383,7 +401,7 @@ class AudioTunerEngine(
      * folds an overtone back onto a fundamental here: if the ear hears the octave, the display should say so.
      * There are no tuned marks either; a chromatic reading is a measurement, not a task with an end.
      */
-    private fun publishChromaticFrame(pitchHz: Double, confidence: Double, level: Double) {
+    private fun publishChromaticFrame(pitchHz: Double, confidence: Double, level: Double, gate: Double) {
         val a4Hz = settings.value.a4Hz
         val midi = NoteMath.nearestMidi(pitchHz, a4Hz)
         val cents = NoteMath.cents(pitchHz, midi, a4Hz)
@@ -397,6 +415,7 @@ class AudioTunerEngine(
                 pitchHz = pitchHz,
                 confidence = confidence,
                 level = level,
+                gateLevel = gate,
                 targetIndex = null,
                 centsOff = cents,
                 inTune = inTune,
@@ -433,6 +452,21 @@ class AudioTunerEngine(
                 )
             }
         }
+    }
+
+    /** Last sensitivity applied and its linear gain, so the `10^(dB/20)` runs once per change, not per chunk. */
+    private var appliedSensitivityDb = 0.0
+    private var appliedGain = 1f
+
+    /** Scales [chunk] in place by [sensitivityDb]. The chunk is ours: sources hand over a fresh array each time. */
+    private fun applySensitivity(chunk: FloatArray, sensitivityDb: Double) {
+        if (sensitivityDb != appliedSensitivityDb) {
+            appliedSensitivityDb = sensitivityDb
+            appliedGain = 10.0.pow(sensitivityDb / 20.0).toFloat()
+            Log.d(TAG, "Sensitivity %+.0f dB (gain x%.2f)".format(sensitivityDb, appliedGain))
+        }
+        if (appliedGain == 1f) return
+        for (i in chunk.indices) chunk[i] *= appliedGain
     }
 
     /** Must be called under [dspLock]. */

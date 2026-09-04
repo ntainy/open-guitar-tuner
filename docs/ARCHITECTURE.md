@@ -49,6 +49,9 @@ SettingsRepository (typed DataStore, settings.json) ─────────�
 built-in mic when unplugged; `BUILTIN_MIC` never leaves the mic; `SPECIFIC_DEVICE` matches on the stable
 `AudioInputDevice.key` ("usb:<product name>"). An explicit pick in the input sheet overrides the policy for the
 session while that device is present. Debug builds add a synthetic "Test tone" input for UI work without a guitar.
+The same key indexes `TunerSettings.sensitivityDb`, the per-input gain the engine applies to every chunk before
+analysis; the input sheet edits it for the active input over a level meter drawn from `TunerState.level` and
+`TunerState.gateLevel`, and the ViewModel persists an edit once the slider has rested for 60 ms.
 
 ## Persistence
 

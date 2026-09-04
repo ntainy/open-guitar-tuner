@@ -81,12 +81,21 @@ data class TunerUiState(
     val testToneHz: Double = 110.0,
     /** Nearest note to [testToneHz], e.g. "A2". */
     val testToneNote: String = "A2",
+    /** RMS of the last capture chunk after sensitivity, 0..1: the input meter's bar. */
+    val inputLevel: Double = 0.0,
+    /** Level a chunk must reach for its pitch to count, 0..1: the input meter's mark. */
+    val gateLevel: Double = 0.0,
+    /** Sensitivity of the active input in whole dB; 0 when nothing has been set for it. */
+    val sensitivityDb: Double = 0.0,
 ) {
     val anyTuned: Boolean get() = strings.any { it.isTuned }
 
     val allTuned: Boolean get() = strings.isNotEmpty() && strings.all { it.isTuned }
 
     val isTestToneInput: Boolean get() = input?.kind == InputKind.TEST_TONE
+
+    /** Sensitivity is a property of a real input; the test tone has a fixed level and nothing to correct. */
+    val canAdjustSensitivity: Boolean get() = input != null && input.kind != InputKind.TEST_TONE
 
     companion object {
         const val HINT_PLAY = "Play a string"
@@ -168,6 +177,9 @@ fun deriveTunerUiState(
         toleranceCents = settings.toleranceCents,
         testToneHz = testToneHz,
         testToneNote = testToneNote,
+        inputLevel = engine.level,
+        gateLevel = engine.gateLevel,
+        sensitivityDb = settings.sensitivityFor(engine.input?.key),
     )
 }
 

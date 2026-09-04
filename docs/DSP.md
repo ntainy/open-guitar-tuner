@@ -6,6 +6,9 @@ Everything in `:dsp` is pure Kotlin/JVM (`dev.ntainy.guitar_tuner.dsp`). The cha
 AudioSource.samples()  48 kHz mono float chunks of any size
     │
     ▼
+× 10^(sensitivityDb / 20)                                        per-input gain from TunerSettings (engine, "Sensitivity")
+    │
+    ▼
 RingBufferFrameAssembler(frameSize = 4096, hopSize = 2048)      one frame every 42.7 ms, 50 % overlap
     │  FloatArray(4096), reused between callbacks
     ▼
@@ -178,7 +181,7 @@ Change the constructor arguments in `AppContainer`; nothing in the algorithms is
 | AUTO flickers between two strings | `switchMarginCents` 30 → 50, `framesToSwitch` 3 → 5 |
 | AUTO slow to pick the new string | `framesToSwitch` 3 → 2 |
 | Readings appear from room noise | `silenceRms` 0.003 → 0.01 (−40 dBFS) |
-| Quiet pickup never registers | `silenceRms` 0.003 → 0.001 |
+| Quiet pickup never registers | the user raises **Sensitivity** for that input (see below); leave `silenceRms` alone, it is the floor the boost is measured against |
 
 ## Stages added after the first real-guitar test (M5)
 
@@ -205,3 +208,50 @@ A string that sounds exactly at another string's target (or an octave of it) is 
 detector. The rules above bias towards the fundamental reading, so such a string shows as "far off" on its own
 row rather than being claimed by the other string; when that is still not what you want, tap the string to pin
 it (tap again to return to AUTO).
+
+## Sensitivity: per-input gain (4 Sep 2026)
+
+Every level rule above (`silenceRms` 0.003, the gate's `minRms` 0.004, the onset detector's `minLevel` 0.004) assumes a
+string lands well above −48 dBFS. A dry pickup through a USB interface need not: the first MP-3 field test reported
+"the tuner only reacts when I really hit the string, then the number appears and disappears", which is exactly what a
+signal whose attacks alone poke above 0.004 looks like. Rather than expose three thresholds, the engine multiplies each
+capture chunk by `10^(dB/20)` before anything else sees it (`AudioTunerEngine.applySensitivity`), with the dB stored per
+input in `TunerSettings.sensitivityDb` (`AudioInputDevice.key` → dB, −12…+36, whole numbers, 0 = no entry). The
+adaptive gate keeps working because its ratio and ceiling scale with the signal; the interface's own noise floor rises
+with the boost, which is the honest picture. `TunerState.gateLevel` publishes the gate's threshold so the input sheet can
+draw the level against it: the user turns the slider up until a softly played string clears the mark.
+
+## Replaying a recording
+
+`RecordingReplayTest` (app unit tests) pushes a 48 kHz mono file (raw float32 or WAV) through the real engine and DSP
+objects one 1024-sample chunk at a time and writes a TSV with, per analysis frame, what YIN saw and what the screen
+would have shown. It is the desk-side equivalent of `adb logcat -s TunerFrames:V` when the guitar is elsewhere:
+
+```
+ffmpeg -i sample.m4a -ac 1 -ar 48000 -f f32le sample.f32
+./gradlew :app:testDebugUnitTest --tests '*RecordingReplayTest*' -Ptuner.replay.file=$PWD/sample.f32 \
+    -Ptuner.replay.gainDb=-24 -Ptuner.replay.sensitivityDb=24 -Ptuner.replay.out=$PWD/replay.tsv
+```
+
+`gainDb` scales the file before the engine (a quieter or hotter interface than the one that made it); `sensitivityDb`
+is the per-input setting the user would have chosen. Gradle treats the properties as inputs, so a changed value reruns
+the test; add `--rerun` to repeat one.
+
+Measured on the MP-3 recording (six strings, then each string turned flat and back sharp; strings peak −15 dBFS,
+silence −70 dBFS, 2nd harmonic level with the fundamental on every string):
+
+| Replay | Frames with a reading (of 2867) | High E frames (of 122) |
+|---|---|---|
+| as recorded | 2188 | 111 |
+| 24 dB quieter | 1285 | 12 |
+| 24 dB quieter, sensitivity +24 dB | 2188 | 111 |
+| 36 dB quieter | 0 | 0 |
+| 36 dB quieter, sensitivity +30 dB | 2080 | 109 |
+
+Every string was picked within ~350 ms of the pluck and tracked to about −47 dBFS; peg turns of ±2 semitones were
+followed without a string switch. Two things the replay showed that are not fixed: (1) at a re-pluck after a short pause
+the first frame, mostly silence with the attack at its tail, can read as a confident wrong pitch, and the onset hold
+then freezes it for ~300 ms (four episodes in two minutes: +2477, −382, +2000 and −882…+930 cents) — confirming the
+first reading after a smoother reset with a second agreeing frame would remove it at the cost of one frame of latency;
+(2) after ~10 s of continuous playing the gate's "quietest second" is a ringing string, so a −37 dBFS tail is blanked
+1.5 s early.

@@ -679,6 +679,13 @@ private fun UsbTips(modifier: Modifier = Modifier, initiallyExpanded: Boolean = 
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
+                Text(
+                    text = "If the tuner only reacts to hard strokes, the interface is quiet: tap the input icon on " +
+                        "the Tune screen and raise Sensitivity until a softly played string clears the mark. The " +
+                        "value is remembered for that interface.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
             }
         }
     }

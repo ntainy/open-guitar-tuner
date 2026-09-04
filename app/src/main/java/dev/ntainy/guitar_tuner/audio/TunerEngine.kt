@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.StateFlow
  * Everything the Tune screen renders. Produced ~25 times per second while running.
  *
  * @property pitchHz smoothed detected frequency, null when there is no stable signal
+ * @property level RMS of the last capture chunk after the input's sensitivity, 0..1
+ * @property gateLevel level a chunk must reach for its pitch to be trusted (the noise gate's threshold, on the
+ *   same scale as [level]); together they draw the input meter
  * @property targetIndex index of the string being tuned (0 = low string), null before anything is detected
  * @property centsOff signed offset of [pitchHz] from the target string; positive = sharp
  * @property inTune true while |centsOff| <= tolerance
@@ -17,6 +20,7 @@ data class TunerState(
     val pitchHz: Double? = null,
     val confidence: Double = 0.0,
     val level: Double = 0.0,
+    val gateLevel: Double = 0.0,
     val targetIndex: Int? = null,
     val centsOff: Double? = null,
     val inTune: Boolean = false,

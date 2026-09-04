@@ -281,4 +281,38 @@ class TunerUiStateTest {
         assertEquals("D3", pinnedButSilent.readoutDetail, "a pinned string is named even before it is played")
         assertEquals(TunerUiState.HINT_PLAY, pinnedButSilent.hint)
     }
+
+    @Test
+    fun sensitivityAndLevelsFollowTheActiveInput() {
+        val usb = AudioInputDevice(7, "usb:NUX MP-3", "NUX Mighty Plug Pro (USB)", InputKind.USB)
+        val mic = AudioInputDevice(1, AudioInputDevice.BUILTIN_KEY, "Built-in microphone", InputKind.BUILTIN_MIC)
+        val tone = AudioInputDevice(-1, AudioInputDevice.TEST_TONE_KEY, "Test tone", InputKind.TEST_TONE)
+        val settings = TunerSettings(sensitivityDb = mapOf(usb.key to 18.0))
+
+        val onUsb = derive(engine = listening.copy(input = usb, level = 0.05, gateLevel = 0.004), settings = settings)
+        assertEquals(18.0, onUsb.sensitivityDb)
+        assertEquals(0.05, onUsb.inputLevel)
+        assertEquals(0.004, onUsb.gateLevel)
+        assertTrue(onUsb.canAdjustSensitivity)
+
+        val onMic = derive(engine = listening.copy(input = mic), settings = settings)
+        assertEquals(0.0, onMic.sensitivityDb, "the mic has no entry of its own")
+        assertTrue(onMic.canAdjustSensitivity)
+
+        assertFalse(derive(engine = listening.copy(input = tone), settings = settings).canAdjustSensitivity)
+        assertFalse(derive().canAdjustSensitivity, "no input, nothing to adjust")
+    }
+
+    @Test
+    fun meterSpansSixtyDecibelsAndDbLabelsUseARealMinus() {
+        assertEquals(0f, meterFraction(0.0))
+        assertEquals(0f, meterFraction(0.0005), "−66 dBFS is off the left end")
+        assertEquals(0.2f, meterFraction(0.004), 1e-3f, "the gate's floor, −48 dBFS, sits a fifth of the way in")
+        assertEquals(0.5f, meterFraction(0.0316), 1e-2f)
+        assertEquals(1f, meterFraction(1.0))
+
+        assertEquals("+12 dB", formatDb(12))
+        assertEquals("0 dB", formatDb(0))
+        assertEquals("−6 dB", formatDb(-6))
+    }
 }

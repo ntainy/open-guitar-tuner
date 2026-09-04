@@ -481,4 +481,37 @@ class AudioTunerEngineTest {
         assertEquals(1, h.state.targetIndex, "A2 is the fifth string")
         assertNull(h.state.chromaticMidi, "chromaticMidi is only set in chromatic mode")
     }
+
+    @Test
+    fun sensitivityScalesTheCapturingInputOnlyAndFollowsEdits() = runTest {
+        val settings = TunerSettings(sensitivityDb = mapOf(USB_DEVICE.key to 20.0, MIC_DEVICE.key to -6.0))
+        val h = Harness(this, listOf(USB_DEVICE, MIC_DEVICE), settings)
+        h.startWithPermission()
+        h.settle()
+        assertEquals(USB_DEVICE, h.state.input)
+
+        h.feed(amplitude = 0.01f)
+        h.settle()
+        assertEquals(0.1, h.state.level, 1e-4, "+20 dB is a gain of 10 on the USB input")
+        assertEquals(0.02, h.state.gateLevel, 1e-9, "a loud first bucket pins the gate at its ceiling")
+
+        h.settings.value = settings.withSensitivity(USB_DEVICE.key, 6.0)
+        h.settle()
+        h.feed(amplitude = 0.01f)
+        h.settle()
+        assertEquals(0.01995, h.state.level, 1e-4, "an edit applies to the next chunk without a restart")
+
+        h.settings.value = settings.withSensitivity(USB_DEVICE.key, 0.0)
+        h.settle()
+        h.feed(amplitude = 0.001f)
+        h.settle()
+        assertEquals(0.001, h.state.level, 1e-6, "0 dB (no entry) is unity gain")
+        assertEquals(0.004, h.state.gateLevel, 1e-9, "a quiet bucket brings the gate down to its floor")
+
+        h.engine.selectInput(MIC_DEVICE)
+        h.settle()
+        h.feed(amplitude = 0.1f)
+        h.settle()
+        assertEquals(0.0501, h.state.level, 1e-4, "the mic runs at its own −6 dB, not the USB value")
+    }
 }

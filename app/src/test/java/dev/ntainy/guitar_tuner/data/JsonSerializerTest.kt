@@ -20,7 +20,12 @@ class JsonSerializerTest {
 
     @Test
     fun `round trips a document`() = runTest {
-        val value = TunerSettings(a4Hz = 442.0, showHz = false, activeTuningId = "custom_1")
+        val value = TunerSettings(
+            a4Hz = 442.0,
+            showHz = false,
+            activeTuningId = "custom_1",
+            sensitivityDb = mapOf("usb:NUX MP-3" to 18.0),
+        )
         val bytes = ByteArrayOutputStream().also { serializer.writeTo(value, it) }.toByteArray()
 
         assertEquals(value, serializer.readFrom(ByteArrayInputStream(bytes)))

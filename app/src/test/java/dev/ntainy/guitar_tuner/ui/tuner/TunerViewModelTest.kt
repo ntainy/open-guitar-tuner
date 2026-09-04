@@ -463,4 +463,49 @@ class TunerViewModelTest {
         runCurrent()
         assertTrue(engine.state.value.running)
     }
+
+    @Test
+    fun sensitivityShowsAtOnceAndIsPersistedPerInputAfterTheValueRests() = runTest {
+        engine.update { it.copy(input = usb) }
+        val vm = viewModel()
+        val stored = mutableListOf<Map<String, Double>>()
+        backgroundScope.launch { settings.settings.collect { stored += it.sensitivityDb } }
+        runCurrent()
+        vm.uiState.test {
+            awaitDerived()
+            vm.setSensitivityDb(17.6)
+            assertEquals(18.0, expectMostRecentItem().sensitivityDb, "whole decibels, shown before anything is written")
+            runCurrent()
+            assertEquals(emptyMap(), stored.last(), "nothing is written until the value has rested")
+
+            vm.setSensitivityDb(20.0)
+            advanceTimeBy(30)
+            vm.setSensitivityDb(24.0)
+            advanceTimeBy(100)
+            runCurrent()
+            assertEquals(mapOf(usb.key to 24.0), stored.last())
+            assertTrue(stored.none { it[usb.key] == 20.0 }, "a value the thumb passed through is never written")
+            assertEquals(24.0, expectMostRecentItem().sensitivityDb)
+
+            engine.update { it.copy(input = mic) }
+            assertEquals(0.0, expectMostRecentItem().sensitivityDb, "the mic has its own value, unset so far")
+            vm.setSensitivityDb(99.0)
+            advanceTimeBy(100)
+            runCurrent()
+            assertEquals(mapOf(usb.key to 24.0, mic.key to TunerSettings.MAX_SENSITIVITY_DB), stored.last())
+            assertEquals(TunerSettings.MAX_SENSITIVITY_DB, expectMostRecentItem().sensitivityDb)
+
+            vm.setSensitivityDb(0.0)
+            advanceTimeBy(100)
+            runCurrent()
+            assertEquals(mapOf(usb.key to 24.0), stored.last(), "0 dB forgets the entry")
+
+            engine.update { it.copy(input = null) }
+            vm.setSensitivityDb(9.0)
+            advanceTimeBy(100)
+            runCurrent()
+            assertEquals(mapOf(usb.key to 24.0), stored.last(), "no input, nothing to remember it for")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 }

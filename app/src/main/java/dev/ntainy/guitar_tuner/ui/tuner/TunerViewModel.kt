@@ -6,12 +6,16 @@ import dev.ntainy.guitar_tuner.audio.AudioInputDevice
 import dev.ntainy.guitar_tuner.audio.ReferenceTonePlayer
 import dev.ntainy.guitar_tuner.audio.TunerEngine
 import dev.ntainy.guitar_tuner.data.SettingsRepository
+import dev.ntainy.guitar_tuner.data.model.TunerSettings
 import dev.ntainy.guitar_tuner.data.model.Tuning
 import dev.ntainy.guitar_tuner.data.model.STRING_COUNT
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -64,8 +68,21 @@ class TunerViewModel(
     /** The input the user picked in the sheet for this session; null = "Auto" (the settings policy decides). */
     private val selectedInputKey = MutableStateFlow<String?>(null)
 
+    /**
+     * The last sensitivity edit (input key to whole dB), applied to the screen at once and persisted after it has
+     * rested for [SENSITIVITY_WRITE_DELAY_MS]: a slider drag is a few writes rather than sixty, and the thumb never
+     * has to wait for the file. The engine reads the persisted value, so the needle answers within that delay.
+     */
+    private val sensitivityEdit = MutableStateFlow<Pair<String, Double>?>(null)
+
+    /** Persisted settings with the pending sensitivity edit already applied, so the screen never lags the thumb. */
+    private val shownSettings: Flow<TunerSettings> =
+        combine(settings.settings, sensitivityEdit) { stored, edit ->
+            if (edit == null) stored else stored.withSensitivity(edit.first, edit.second)
+        }
+
     val uiState: StateFlow<TunerUiState> =
-        combine(engine.state, settings.settings, activeTuning, testTone, selectedInputKey, ::deriveTunerUiState)
+        combine(engine.state, shownSettings, activeTuning, testTone, selectedInputKey, ::deriveTunerUiState)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), TunerUiState())
 
     /**
@@ -100,6 +117,12 @@ class TunerViewModel(
 
     init {
         viewModelScope.launch { watchForFeedback() }
+        viewModelScope.launch {
+            sensitivityEdit.filterNotNull().collectLatest { (key, db) ->
+                delay(SENSITIVITY_WRITE_DELAY_MS)
+                settings.update { it.withSensitivity(key, db) }
+            }
+        }
     }
 
     /**
@@ -190,8 +213,22 @@ class TunerViewModel(
         testTone.value = hz.coerceIn(TunerUiState.TEST_TONE_MIN_HZ, TunerUiState.TEST_TONE_MAX_HZ)
     }
 
+    /**
+     * Sensitivity for the input being listened to, in whole dB within the settings range. Remembered for that
+     * input alone: it corrects for the interface, and a different interface needs its own. 0 dB forgets the entry.
+     */
+    fun setSensitivityDb(db: Double) {
+        val key = engine.state.value.input?.key ?: return
+        val whole = db.roundToInt().toDouble()
+            .coerceIn(TunerSettings.MIN_SENSITIVITY_DB, TunerSettings.MAX_SENSITIVITY_DB)
+        sensitivityEdit.value = key to whole
+    }
+
     private companion object {
         const val STOP_TIMEOUT_MS = 5_000L
+
+        /** How long a sensitivity value must rest before it is written; short enough to feel immediate. */
+        const val SENSITIVITY_WRITE_DELAY_MS = 60L
 
         /** A needle sitting on the edge of the band can cross it many times a second; only tick this often. */
         const val BAND_TICK_MIN_INTERVAL_MS = 600L
