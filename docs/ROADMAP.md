@@ -57,6 +57,9 @@ because the block was height-starved and `spreadCentres` packed them evenly.
   whose posts open the note picker; new tunings start unnamed with Save disabled; "Start from a preset…" sheet;
   the note picker is pitch-class chips + an octave row instead of sixty scrolling rows.
 - **Settings** — plain reference-pitch track (no 51 tick dots), USB tips collapsed behind a row.
+- **Back navigation** — Tune is the root of the Nav3 back stack; Tunings and Settings sit on top of it one at a
+  time, so back returns to Tune from either and leaves the app only from Tune. The tuning chip opens the list
+  as a picker (`TuningsKey(pick = true)`): choosing a tuning pops straight back. Policy in `switchTo`, unit-tested.
 - **Bugs fixed** — the chromatic strip clipped its B cell on 360 dp (cells now size from the width); landscape
   hid the note glyph and Start over under the nav bar (the readout column now fits and scrolls as a safety).
 

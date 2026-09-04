@@ -20,6 +20,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk && adb shell am start -
 adb exec-out screencap -p > /tmp/shot.png                      # then Read the PNG
 adb logcat -s TunerEngine AudioInputMonitor                    # device choice, capture start/stop
 adb logcat -v time -s TunerFrames:V > frames.txt               # debug builds: one line per analysis frame
+adb shell dumpsys media.audio_policy | grep -i submix         # if the reference tone arrives seconds late: Android Studio's
+                                                               # Running Devices redirects media audio to the Mac (Remote Submix)
 ./gradlew assembleRelease                                      # R8 on; unsigned unless a keystore is configured
 ```
 

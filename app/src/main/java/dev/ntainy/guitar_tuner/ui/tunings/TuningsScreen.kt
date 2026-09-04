@@ -51,10 +51,16 @@ import dev.ntainy.guitar_tuner.ui.theme.GuitarTunerTheme
 
 /**
  * The chromatic mode row, then the grouped tunings: My tunings first, then the preset groups.
- * Tap selects, + opens the editor.
+ * Tap selects, + opens the editor. With [onPicked] set the screen was opened to choose a tuning, and a tap
+ * selects and then hands back (the Tune screen's chip); without it a tap just selects (the bottom bar).
  */
 @Composable
-fun TuningsScreen(container: AppContainer, onEditTuning: (String?) -> Unit, modifier: Modifier = Modifier) {
+fun TuningsScreen(
+    container: AppContainer,
+    onEditTuning: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+    onPicked: (() -> Unit)? = null,
+) {
     val viewModel: TuningsViewModel = viewModel(
         factory = viewModelFactory {
             initializer { TuningsViewModel(container.tuningsRepository, container.settingsRepository) }
@@ -81,7 +87,10 @@ fun TuningsScreen(container: AppContainer, onEditTuning: (String?) -> Unit, modi
 
     TuningsContent(
         state = state,
-        onSelect = viewModel::select,
+        onSelect = { id ->
+            viewModel.select(id)
+            onPicked?.invoke()
+        },
         onEdit = onEditTuning,
         onDuplicate = viewModel::duplicate,
         onDelete = viewModel::delete,
