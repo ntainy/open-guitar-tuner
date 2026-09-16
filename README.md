@@ -1,80 +1,62 @@
 # OpenGuitarTuner
 
-A free and open source Android guitar tuner with the GuitarTuna interaction and none of its limits: you see your six strings on
-a headstock, the app tells you which string it hears and how many cents you are off, and you can keep as many
-custom tunings as you like. Listens through the phone microphone or through a USB audio interface such as the
-NUX Mighty Plug Pro MP-3.
+A free guitar tuner for Android phones. Play a string and the app shows which string it hears and whether to tune
+up or down. There are no ads, no account and nothing to pay for.
 
-Built for one phone running Android 16, so there is no compatibility baggage: minSdk 36, Kotlin, Jetpack Compose,
-Material 3, and a small hand-written YIN pitch detector.
+## What it does
 
-## Status
+- Shows your guitar's headstock with all six strings. Play any string and the app picks out which one it is and
+  tells you how far off it is.
+- Tap a string to tune just that one. Press and hold a string to hear the note it should be.
+- Comes with 20+ tunings ready to use: Standard, Drop D, DADGAD, Open G, half step down and more.
+- Lets you save as many of your own tunings as you like.
+- Has a chromatic mode that tunes to any note.
+- Listens through the phone's microphone, or through a USB audio interface if you want to plug your guitar in.
+- Offers a dark or light theme, sharps or flats, and a reference pitch other than 440 Hz if you need one.
+- Works offline. The app has no internet access, so the sound it hears never leaves your phone.
 
-Working and in use, unit-tested (261 tests across `:dsp` and `:app`) and verified on a Galaxy S23 Ultra with an
-acoustic guitar through the phone microphone. The USB input path is implemented and unit-tested but has not yet
-been tried with a real interface. See `docs/ROADMAP.md` for what comes next, `docs/PLAN.md` for how the MVP was built, `docs/ARCHITECTURE.md` for how the
-pieces fit, `docs/DSP.md` for the pitch detector, `docs/TUNINGS.md` for the preset list, and `CLAUDE.md` for build
-commands and conventions.
+## Will it work on my phone?
 
-## Features
+- **Android 16 or newer is required.** Older Android versions can't install it.
+- It runs on phones and tablets.
+- It's made for **six-string guitars**. Other instruments can use chromatic mode, which just shows the nearest note.
+- Any phone microphone will do. For USB, use an audio interface that works with Android without installing
+  drivers, plugged into the phone's USB-C port.
 
-- Six-string preview on original headstock art, 3+3 or 6-in-line, cropped at the nut and given most of the
-  screen; the string buttons sit on the tuning posts, the target one squared off in brass.
-- A cents readout (the signed number, "Tune up / Tune down / In tune", target note and Hz) over a ±50 ruler with
-  a springing needle; mint inside the tolerance band, coral past ±25; tuned-string marks.
-- AUTO string detection with hysteresis, or tap a string to pin it (tap it again to hand back to AUTO); a toast when all six are in tune.
-- Haptics throughout: ticks as sliders step, a nudge when a string earns its mark, a firmer one when all six land.
-  Driven by the vibrator directly, so the app's own switch decides rather than Android's system touch-feedback setting.
-- Long-press a string to hear its target pitch as a synthesized pluck; capture pauses while it sounds.
-- Optional needle trail: the last 1.5 s of readings fade behind the needle, so you can watch a note settle.
-- Unlimited custom tunings with a full editor: a headstock preview whose posts open a two-step note picker,
-  −/+ steppers, "Start from a preset"; 23 presets grouped as Standard, Power, Transposed, Open, Extras.
-- Input from the built-in microphone or a USB audio interface, chosen automatically or by hand.
-- Reference pitch 415–466 Hz, tolerance 1–10 cents, sharps or flats, dark/light theme, keep-screen-on.
-- Side-by-side layout in landscape and on tablets; debug builds add a synthetic "Test tone" input.
+## Install
 
-## Building
+The app isn't in an app store. You install it from a file on this page:
 
-```sh
-export JAVA_HOME="$HOME/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-./gradlew :dsp:test :app:testDebugUnitTest assembleDebug   # what CI runs
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
+1. On your phone, open the [latest release](https://github.com/ntainy/open-guitar-tuner/releases/latest).
+2. Under **Assets**, tap the `OpenGuitarTuner-….apk` file to download it.
+3. Open the downloaded file. If Android asks, allow your browser to install apps, then tap **Install**.
+4. Open OpenGuitarTuner and allow microphone access.
 
-`assembleRelease` runs R8 and signs the APK when a keystore is configured; with none configured it still succeeds
-and produces an unsigned APK. Every push and pull request runs the tests and builds a debug APK
-(`.github/workflows/ci.yml`); pushing a `v*` tag builds and publishes a signed release
-(`.github/workflows/release.yml`). See `docs/RELEASING.md` for the keystore setup and how to cut a release.
+To update, download the newer APK and install it the same way. Your tunings and settings are kept.
 
-## Layout
+## Using a USB interface
 
-| Path | What |
-|---|---|
-| `dsp/` | Pure-JVM DSP: note math, YIN pitch detection, smoothing, string resolution. Unit-tested. |
-| `app/` | The Android app: audio capture, persistence, Compose UI. |
-| `art/` | Headstock illustrations, an original vector set in reserve, and the font licence. |
-| `docs/` | Plan, architecture, DSP notes, preset tuning list, release process. |
+Plug the interface into your phone. The app switches to it automatically. To choose an input yourself, tap the input
+icon at the top of the Tune screen.
+
+If the tuner only reacts when you play hard, open the same menu, play a string softly, and raise **Sensitivity**
+until the level bar goes past the mark. The app remembers the setting separately for each input.
+
+## What it's been tested with
+
+This is a beta, version 0.2. So far it has been tried with:
+
+| Device | Input | Result |
+|---|---|---|
+| Samsung Galaxy S23 Ultra (Android 16) | Built-in microphone, acoustic guitar | Works well and is in regular use |
+| NUX Mighty Plug Pro (MP-3) | USB | Works well once Sensitivity is raised, because the MP-3's dry mode sends a quiet signal |
+
+Other phones and interfaces should work too, but nobody has tried them yet. If something doesn't work for you,
+please [open an issue](https://github.com/ntainy/open-guitar-tuner/issues) and say which phone and input you used.
+This is a pet project I work on in my spare time, so I read every issue but can't promise a quick reply or fix.
 
 ## Licence
 
-Copyright (C) 2026 ntainy
-
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
-License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
-warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along with this program. If not, see
-<https://www.gnu.org/licenses/>.
-
-The full text is in [`LICENSE`](LICENSE); the source lives at <https://github.com/ntainy/open-guitar-tuner>.
-
-### Bundled font
-
-Bricolage Grotesque is bundled under the SIL Open Font License 1.1, not the GPL — its licence is
-`art/OFL-BricolageGrotesque.txt` and it stays in force for the font files. The two coexist without friction: the OFL
-is a permissive licence that places no restriction on the licensing of the software a font ships alongside, and it
-requires only that the font keep its own licence and reserved name. Redistributing OpenGuitarTuner therefore means
-honouring the GPL for the code and the OFL for the font, with no conflicting obligations between them.
+OpenGuitarTuner is free and open source under the [GNU GPL v3](LICENSE). It includes the Bricolage Grotesque font
+under the SIL Open Font License ([`art/OFL-BricolageGrotesque.txt`](art/OFL-BricolageGrotesque.txt)). Notes for
+developers are in [`docs/`](docs).
